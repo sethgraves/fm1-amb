@@ -1,0 +1,35 @@
+# DREAM in the host simulator: python3 base/tools/build.py dream --host, then
+#   dream/build/host/DREAM_host dream/tests/basic.txt dream/build/host
+wait 600
+expect playing 1
+expect piece 0
+wav swell.wav
+wait 12000
+wavstop
+shot playing.png
+expect level0 >480
+expect level1 >480
+# PITCH up a semitone: the unit glides, both tones together
+turn K1 1
+wait 1500
+expect semi 1
+expect dirty 1
+shot pitch.png
+turn K1 -1
+wait 1500
+wav held.wav
+wait 20000
+wavstop
+# STOP: both fade
+tap PLAY
+wait 12000
+expect playing 0
+expect level0 <5
+expect level1 <5
+tap PLAY
+tap SAVE
+wait 30
+expect dirty 0
+reboot
+wait 600
+expect playing 1

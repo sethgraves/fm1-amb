@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MPL-2.0
+# DREAM's words for a screen reader (fm1-reader): the text on the screen <TAB> what to say.
+# url: https://sethgraves.github.io/fm1-amb/words/
+DREAM	dream
+COMPOSITION 1960 #7	composition nineteen sixty number seven
+PITCH	pitch
+FINE	fine
+SPREAD	spread
+TILT	tilt
+PLAYING	playing
+STOPPED	stopped

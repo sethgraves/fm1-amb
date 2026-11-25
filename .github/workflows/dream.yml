@@ -1,0 +1,37 @@
+# DREAM: the device firmware, built on GitHub by the shared FM-1 builder (zvenson/fm1-build). Run it from
+# Actions ("Run workflow"), or push to a dream/* branch. The package is in the run's "packages" artifact.
+name: DREAM firmware
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['dream/**']
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    uses: zvenson/fm1-build/.github/workflows/build.yml@v1
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      sdk: true
+      tests-block: true
+      build: |
+        set -euo pipefail
+        git submodule update --init --recursive
+        sudo apt-get install -y -qq libfribidi0
+        python3 -c "from PIL import features; assert features.check('raqm'), 'Pillow without raqm'"
+        python3 base/tools/build.py dream
+        mkdir -p build/out
+        cp dream/build/dream.fwsc build/out/
+        cp dream/build/firmware.json build/out/ 2>/dev/null || true
+      test: |
+        set -euo pipefail
+        python3 base/tools/build.py dream --host
+        mkdir -p build/host-run
+        dream/build/host/dream_host dream/tests/basic.txt build/host-run
+      packages: build/out/*
