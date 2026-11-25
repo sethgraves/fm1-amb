@@ -22,7 +22,6 @@ jobs:
       tests-block: true
       build: |
         set -euo pipefail
-        git submodule update --init --recursive
         sudo apt-get install -y -qq libfribidi0
         python3 -c "from PIL import features; assert features.check('raqm'), 'Pillow without raqm'"
         python3 base/tools/build.py app
@@ -43,7 +42,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:

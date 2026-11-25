@@ -42,7 +42,7 @@ The second page starts over with each new piece. The [manual](app/docs/MANUAL.md
 ## Build
 
 ```
-git clone --recursive https://github.com/sethgraves/fm1-dream
+git clone https://github.com/sethgraves/fm1-dream
 python3 base/tools/build.py app --host                      # the host simulator
 app/build/host/dream_host app/tests/basic.txt OUTDIR         # its tests: WAVs and screenshots in OUTDIR
 python3 base/tools/build.py app --web                       # the browser emulator (Emscripten)

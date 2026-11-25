@@ -5,7 +5,7 @@ If you change one of its files and share the result, share that file's source un
 
 | What | Origin | Licence |
 | --- | --- | --- |
-| `base/`: the platform (boot, USB, storage, the update path, screen, panel, the screen reader, the host simulator, the browser emulator, the build and install tools) | [fm1-base](https://github.com/charlesvestal/fm1-base) by Charles Vestal and [felucca-bsp](https://github.com/hugelton/felucca-bsp), from Felucca by Leo Kuroshita (Hügelton Instruments) | MPL-2.0 |
+| `base/` (copied in: `base/VENDORED.md` has the commits): the platform (boot, USB, storage, the update path, screen, panel, the screen reader, the host simulator, the browser emulator, the build and install tools) | [fm1-base](https://github.com/charlesvestal/fm1-base) by Charles Vestal and [felucca-bsp](https://github.com/hugelton/felucca-bsp), from Felucca by Leo Kuroshita (Hügelton Instruments) | MPL-2.0 |
 | `app/`: the drone engine, the pieces, the screen | Seth Graves, from fm1-base's app template | MPL-2.0 |
 
 This repository began as a fork of [AMB-1](https://github.com/charlesvestal/fm1-amb); none of AMB-1's own code

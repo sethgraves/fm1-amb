@@ -60,8 +60,6 @@ jobs:
       build: |
         set -euo pipefail
         version=${GITHUB_REF_NAME#v}
-        # the builder checks out without submodules: fm1-base (base/) and its felucca-bsp (base/bsp/)
-        git submodule update --init --recursive
         # the fonts' OpenType features (base/tools/gen_font.py): Pillow's raqm, which loads the system's FriBiDi
         sudo apt-get install -y -qq libfribidi0
         python3 -c "from PIL import features; assert features.check('raqm'), 'Pillow without raqm'"
