@@ -24,6 +24,7 @@ typedef struct {
 } piece_t;
 
 #define B3_HZ 246.941651f                /* B below middle C, A = 440 */
+#define WTP_EB3 148.994709f              /* The Well-Tuned Piano's Eb (440 * 128/189, an octave down) */
 static const piece_t PIECES[] = {
     /* Composition 1960 #7: B and F#, "to be held for a long time". Here as a pure fifth: harmonics 2 and 3 of
      * a unit an octave under the B, so the F# sits 2 cents above equal temperament */
@@ -37,6 +38,13 @@ static const piece_t PIECES[] = {
      * The unit 4.5 Hz puts the cluster at 1008 - 1296 Hz and the base at 72, 126, 162 Hz; PITCH moves it all. */
     {"DREAM HOUSE 9:7:4", 4.5f, 18, 3,
      {16, 28, 36, 224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
+    /* The Well-Tuned Piano: fifths and harmonic sevenths over Eb, its A (189/128) at 440 Hz, so Eb = 297.99 Hz
+     * (Gann 1993). The Opening Chord: Eb Bb C Eb F Bb, 4:6:7:8:9:12, here from the Eb an octave under that */
+    {"THE OPENING CHORD", WTP_EB3 * 0.25f, 6, 0, {4, 6, 7, 8, 9, 12}},
+    /* The Magic Chord: the keys E F A Bb D E G A, which sound 567/512, 9/8, 189/128, 3/2, 63/32 of Eb, then
+     * the E, G (21/16) and A an octave up: 567 576 756 768 1008 1134 1344 1512 on Eb/512, or a third of that.
+     * No Eb: the chord's fundamental is absent. Its top A is the 440. */
+    {"THE MAGIC CHORD", WTP_EB3 * 3.0f / 512.0f, 8, 0, {189, 192, 252, 256, 336, 378, 448, 504}},
 };
 #define NPIECES ((int)(sizeof PIECES / sizeof PIECES[0]))
 
@@ -410,6 +418,41 @@ static void draw_cluster(float u)
     }
 }
 
+/* a chord of 3 to 8 tones: its ratio across the top, then the tones in two columns of four, rising down each:
+ * the note, its cents from equal temperament, a bar for its level */
+static void draw_chord(float u)
+{
+    const piece_t *p = &PIECES[set.piece];
+    char t[64], nm[8];
+    const felucca_font_t *f;
+    int32_t i, c, w;
+    float amax = 1e-6f;
+    t[0] = 0;
+    for (i = 0; i < p->n; i++) {
+        if (i)
+            text_cat(t, ":");
+        int_text(p->harm[i], nm, 0);
+        text_cat(t, nm);
+    }
+    f = text_w(&FONT_B, t) <= 224 ? &FONT_B : &FONT_XS;
+    w = text_w(f, t);
+    cv_text(120 - w / 2, 20, f, t, C_HI);
+    for (i = 0; i < p->n; i++)
+        amax = fm_maxf(amax, st.amp[i]);
+    for (i = 0; i < p->n; i++) {
+        int32_t x = i < 4 ? 10 : 126, y = 50 + (i & 3) * 24, bar;
+        note_of(u * (float)p->harm[i], nm, &c);
+        cv_text(x, y, &FONT_B, nm, C_WHITE);
+        int_text(c, t, 1);
+        text_cat(t, "C");
+        cv_text(x + 42, y + 3, &FONT_XS, t, c ? C_AMB : C_DIM);
+        bar = (int32_t)(fm_clampf(dr_level[i] / amax, 0.0f, 1.0f) * 26.0f + 0.5f);
+        cv_rect(x + 76, y + 6, 26, 4, C_LINE);
+        if (bar)
+            cv_rect(x + 76, y + 6, bar, 4, C_HI);
+    }
+}
+
 static void draw(void)
 {
     const piece_t *p = &PIECES[set.piece];
@@ -439,8 +482,11 @@ static void draw(void)
     /* the piece, the ratio, the tones */
     cv_begin(240, 150, C_BLACK);
     cv_text(120 - text_w(&FONT_XS, p->name) / 2, 2, &FONT_XS, p->name, C_GRAY);
-    if (p->n > 4) {
-        draw_cluster(u);
+    if (p->n > 2) {
+        if (p->n > 8)
+            draw_cluster(u);
+        else
+            draw_chord(u);
         cv_blit(0, 34);
         goto knobs;
     }

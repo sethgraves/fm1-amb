@@ -43,3 +43,18 @@ expect level3 >40
 wav dreamhouse.wav
 wait 30000
 wavstop
+# The Well-Tuned Piano: the Opening Chord, then the Magic Chord
+turn PRESET 1
+wait 15000
+expect piece 2
+shot opening.png
+wav opening.wav
+wait 20000
+wavstop
+turn PRESET 1
+wait 15000
+expect piece 3
+shot magic.png
+wav magic.wav
+wait 20000
+wavstop
