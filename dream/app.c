@@ -7,6 +7,7 @@
  *   PRESET      the piece
  *   K1 PITCH    the series up or down, semitones          K2 FINE     cents
  *   K3 SPREAD   the tones across the stereo field         K4 TILT     dB per octave up the series
+ *   ALGORITHM   DRIFT: 0 holds the tones phase-locked; up, their phases slowly drift against each other
  *   MASTER      volume                                     SAVE        keeps all of it for the next power-on
  *
  * Part of the unity build (device/unity.c, host/plat_host.c), after the platform: gfx.c and announce.c are in scope. */
@@ -20,6 +21,7 @@ typedef struct {
     float unit_hz;
     uint8_t n;
     uint8_t nbase;                       /* the first nbase harmonics are the base, under the rest */
+    uint8_t drift;                       /* DRIFT when the piece is chosen, 0 .. 100 */
     uint16_t harm[DR_MAXT];              /* rising */
 } piece_t;
 
@@ -28,7 +30,7 @@ typedef struct {
 static const piece_t PIECES[] = {
     /* Composition 1960 #7: B and F#, "to be held for a long time". Here as a pure fifth: harmonics 2 and 3 of
      * a unit an octave under the B, so the F# sits 2 cents above equal temperament */
-    {"COMPOSITION 1960 #7", B3_HZ * 0.5f, 2, 0, {2, 3}},
+    {"COMPOSITION 1960 #7", B3_HZ * 0.5f, 2, 0, 0, {2, 3}},
     /* The Base 9:7:4 Symmetry in Prime Time When Centered above and below The Lowest Term Primes in The Range 288
      * to 224 with The Addition of 279 and 261 ... with The Addition of 119 (the Dream House), worked from its title:
      *   above, to 288: the primes 128-144 (131, 137, 139) and 64-72 (67, 71) times powers of 2: 262 274 278 268 284
@@ -36,15 +38,23 @@ static const piece_t PIECES[] = {
      *   with 288 and 224, the additions 279 and 261, and 2 x 119 = 238
      * The base 9:7:4 as harmonics 16, 28, 36, two octaves under 36:28 = 9:7 = 288:224's own ratio.
      * The unit 4.5 Hz puts the cluster at 1008 - 1296 Hz and the base at 72, 126, 162 Hz; PITCH moves it all. */
-    {"DREAM HOUSE 9:7:4", 4.5f, 18, 3,
+    {"DREAM HOUSE 9:7:4", 4.5f, 18, 3, 0,
      {16, 28, 36, 224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
     /* The Well-Tuned Piano: fifths and harmonic sevenths over Eb, its A (189/128) at 440 Hz, so Eb = 297.99 Hz
      * (Gann 1993). The Opening Chord: Eb Bb C Eb F Bb, 4:6:7:8:9:12, here from the Eb an octave under that */
-    {"THE OPENING CHORD", WTP_EB3 * 0.25f, 6, 0, {4, 6, 7, 8, 9, 12}},
+    {"THE OPENING CHORD", WTP_EB3 * 0.25f, 6, 0, 0, {4, 6, 7, 8, 9, 12}},
     /* The Magic Chord: the keys E F A Bb D E G A, which sound 567/512, 9/8, 189/128, 3/2, 63/32 of Eb, then
      * the E, G (21/16) and A an octave up: 567 576 756 768 1008 1134 1344 1512 on Eb/512, or a third of that.
      * No Eb: the chord's fundamental is absent. Its top A is the 440. */
-    {"THE MAGIC CHORD", WTP_EB3 * 3.0f / 512.0f, 8, 0, {189, 192, 252, 256, 336, 378, 448, 504}},
+    {"THE MAGIC CHORD", WTP_EB3 * 3.0f / 512.0f, 8, 0, 0, {189, 192, 252, 256, 336, 378, 448, 504}},
+    /* A drift study: "two or more sine waves, the frequencies of which are tuned to relate to each other as
+     * rational frequency ratios" (Young, 1968), their phase angles let drift. The tones of 14 VII 73 aren't
+     * published (three sine waves); these are a choice: 6:7:8 on 1960 #7's B series, F#5 A5 B5, the B at 988 Hz */
+    {"DRIFT STUDY", B3_HZ * 0.5f, 3, 0, 40, {6, 7, 8}},
+    /* Map of 49's Dream: "sine waves sustained in various relationships over one continuous sine wave drone",
+     * the ratios without 5. Its own sets aren't published; this is a choice: a 60 Hz drone (8) under
+     * 49:56:63:72, all of 2, 3 and 7, led by 49 = 7 x 7 */
+    {"MAP OF 49'S DREAM", 7.5f, 5, 1, 0, {8, 49, 56, 63, 72}},
 };
 #define NPIECES ((int)(sizeof PIECES / sizeof PIECES[0]))
 
@@ -58,7 +68,8 @@ typedef struct {
     uint8_t spread;                      /* 0 .. 100 */
     int8_t tilt;                         /* half dB per octave, -12 .. +12 (-6 .. +6 dB) */
     uint8_t playing;
-    uint8_t rsv[2];
+    uint8_t drift;                       /* DRIFT: 0 (locked) .. 100 */
+    uint8_t rsv;
 } settings_t;
 static settings_t set;
 static uint8_t set_dirty;
@@ -72,12 +83,13 @@ static void settings_defaults(void)
     set.spread = 40;
     set.tilt = 0;
     set.playing = 1;
+    set.drift = 0;
 }
 
 static int settings_ok(void)
 {
     return set.magic == SET_MAGIC && set.piece < NPIECES && set.semi >= -12 && set.semi <= 12 && set.fine >= -50 &&
-           set.fine <= 50 && set.spread <= 100 && set.tilt >= -12 && set.tilt <= 12 && set.playing <= 1;
+           set.fine <= 50 && set.spread <= 100 && set.tilt >= -12 && set.tilt <= 12 && set.playing <= 1 && set.drift <= 100;
 }
 
 /* ------------------------------------------------------------ the drone --- */
@@ -118,6 +130,16 @@ static void drone_update(void)
     }
     for (i = 0; i < p->n; i++)           /* their sum 1: in phase, 0.9 of full scale at most */
         st.amp[i] /= sum;
+    {   /* DRIFT: up to 0.1 Hz (squared, so the low end is fine), each tone its own share and direction; the
+         * lowest stays put. 97391.5 phase steps a hertz */
+        float r = (float)set.drift * 0.01f;
+        r = r * r * 0.1f * (4294967296.0f / DR_SR);
+        for (i = 0; i < p->n; i++) {
+            float k = (float)i * 0.618034f;
+            k -= fm_floorf(k);
+            st.drift[i] = i ? (int32_t)(((i & 1) ? 1.0f : -1.0f) * (0.4f + 0.6f * k) * r) : 0;
+        }
+    }
     st_dirty = 1;
 }
 
@@ -245,6 +267,9 @@ static void knob_text(int k, char *t)
     case 2:
         int_text(set.spread, t, 0);
         break;
+    case 4:
+        int_text(set.drift, t, 0);
+        break;
     default: {                           /* half dB steps: "-1.5", "0", "+3" */
         int32_t a = set.tilt < 0 ? -set.tilt : set.tilt;
         text_cat(t, set.tilt < 0 ? "-" : set.tilt > 0 ? "+" : "");
@@ -256,7 +281,7 @@ static void knob_text(int k, char *t)
     }
     }
 }
-static const char *const KNOB_NAME[4] = {"PITCH", "FINE", "SPREAD", "TILT"};
+static const char *const KNOB_NAME[5] = {"PITCH", "FINE", "SPREAD", "TILT", "DRIFT"};
 
 static void knob_turn(int k, int32_t e)
 {
@@ -270,6 +295,9 @@ static void knob_turn(int k, int32_t e)
         break;
     case 2:
         set.spread = (uint8_t)clamp((int32_t)set.spread + e * 2, 0, 100);
+        break;
+    case 4:
+        set.drift = (uint8_t)clamp((int32_t)set.drift + e * 2, 0, 100);
         break;
     default:
         set.tilt = (int8_t)clamp(set.tilt + e, -12, 12);
@@ -320,6 +348,7 @@ static void input(void)
         int32_t p = clamp((int32_t)set.piece + e, 0, NPIECES - 1);
         if (p != set.piece) {
             set.piece = (uint8_t)p;
+            set.drift = PIECES[p].drift;
             set_dirty = 1;
             drone_update();
         }
@@ -333,8 +362,9 @@ static void input(void)
         knob_turn(2, e);
     if ((e = plat_enc(EN_K4)) != 0)
         knob_turn(3, e);
+    if ((e = plat_enc(EN_ALGO)) != 0)
+        knob_turn(4, e);
     (void)plat_enc(EN_SELECT);
-    (void)plat_enc(EN_ALGO);
     if (btn != ui.btn)
         ui.redraw = 1;
     ui.btn = btn;
@@ -513,8 +543,8 @@ static void draw(void)
 knobs:
     cv_begin(240, 50, C_BLACK);
     cv_rect(0, 0, 240, 1, C_LINE);
-    for (i = 0; i < 4; i++) {
-        int32_t x = 4 + i * 59;
+    for (i = 0; i < 5; i++) {
+        int32_t x = 4 + i * 47;
         knob_text(i, t);
         cv_text(x, 8, &FONT_XS, KNOB_NAME[i], C_GRAY);
         cv_text(x, 24, &FONT_B, t, C_HI);
@@ -558,6 +588,8 @@ int app_expect(const char *what, int *got)
         *got = set.semi;
     else if (!strcmp(what, "fine"))
         *got = set.fine;
+    else if (!strcmp(what, "drift"))
+        *got = set.drift;
     else if (!strcmp(what, "dirty"))
         *got = set_dirty;
     else if (!strcmp(what, "unit_inc"))

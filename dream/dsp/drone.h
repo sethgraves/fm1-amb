@@ -5,7 +5,7 @@
  * Every tone is a whole-number harmonic h of one unit frequency (the series' "1", which need not sound).
  * Phases are 32-bit integers, and tone h steps by exactly h times the unit's step, so 3:2 is 3:2 for as
  * long as the FM-1 is on: the tones never drift against each other, whatever the unit does (a glide moves
- * them all together). No filters, no effects, no saturation: a linear sum with headroom.
+ * them all together), unless the drift asks them to. No filters, no effects, no saturation: a linear sum with headroom.
  *
  * Threads: dr_render() runs in the audio interrupt. The main loop fills a dr_state_t and hands it over with
  * dr_commit(); the render takes it at the start of its next block. Float only, no libm (fastmath.h). */
@@ -22,6 +22,10 @@ typedef struct {
     uint16_t harm[DR_MAXT];            /* each tone's harmonic number, 1.. */
     float amp[DR_MAXT];                /* its level, linear; their sum is kept under 1 by the caller */
     float pan[DR_MAXT];                /* -1 left .. +1 right (equal power) */
+    int32_t drift[DR_MAXT];            /* added to each tone's phase step (2^32 a turn a sample): 0 locks it to
+                                        * the series exactly; a few thousand turns it against the others a
+                                        * fraction of a hertz, too little to hear as pitch, enough to reshape
+                                        * the composite waveform over minutes (Young's drift studies) */
     float glide_s;                     /* seconds for a change of unit to arrive */
     float fade_s;                      /* seconds for a tone to swell in or fade out */
 } dr_state_t;

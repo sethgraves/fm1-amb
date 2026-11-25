@@ -58,3 +58,23 @@ shot magic.png
 wav magic.wav
 wait 20000
 wavstop
+# Drift Study: drift 40 from the piece
+turn PRESET 1
+wait 15000
+expect piece 4
+expect drift 40
+shot drift.png
+wav drift.wav
+wait 60000
+wavstop
+# Map of 49's Dream: no drift; ALGORITHM turns DRIFT
+turn PRESET 1
+wait 15000
+expect piece 5
+expect drift 0
+shot map49.png
+wav map49.wav
+wait 20000
+wavstop
+turn ALGO 5
+expect drift 10

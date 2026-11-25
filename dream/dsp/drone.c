@@ -109,18 +109,24 @@ static void block(int32_t *out, uint32_t k, float gain)
         uint16_t h = wanted ? cur.harm[i] : 0;
         if (h_now[i] == 0 && lvl <= 0.0f && !wanted)
             continue;                      /* an empty slot: nothing to do */
-        if (h_now[i] != h) {               /* a new harmonic for this slot: the old fades out first */
-            if (lvl > 1e-5f) {
-                tgt = 0.0f;
+        {
+            float tc = fm_maxf(cur.fade_s, 0.01f) * 0.25f;   /* a swell's time constant */
+            if (h_now[i] != h && h_now[i]) {  /* a new harmonic for this slot: the old goes first, quicker (~2 s) */
+                tc *= 0.2f;
+                if (lvl > 1e-4f) {
+                    tgt = 0.0f;
+                } else {
+                    h_now[i] = h;
+                    lvl = 0.0f;
+                    tc *= 5.0f;
+                    tgt = h && cur.playing ? cur.amp[i] : 0.0f;
+                }
             } else {
-                h_now[i] = h;
-                lvl = 0.0f;
+                h_now[i] = h;                 /* (an empty slot takes its harmonic at once) */
                 tgt = h && cur.playing ? cur.amp[i] : 0.0f;
             }
-        } else {
-            tgt = h && cur.playing ? cur.amp[i] : 0.0f;
+            c = fm_minf(fk / (tc * DR_SR), 1.0f);
         }
-        c = fm_minf(fk / (fm_maxf(cur.fade_s, 0.01f) * 0.25f * DR_SR), 1.0f);
         lvl += (tgt - lvl) * c;
         if (lvl < 1e-6f && tgt == 0.0f)
             lvl = 0.0f;
@@ -142,6 +148,8 @@ static void block(int32_t *out, uint32_t k, float gain)
         dr = (r1 - r0) / fk;
         p = ph[i];
         inc = inc1 * (uint32_t)h_now[i];   /* exact: h times the unit's step */
+        if (i < cur.n)
+            inc += (uint32_t)cur.drift[i];  /* and the drift, if any */
         for (j = 0; j < k; j++) {
             uint32_t ix = p >> FBITS;
             float f = (float)(p & ((1u << FBITS) - 1u)) * (1.0f / (float)(1u << FBITS));
