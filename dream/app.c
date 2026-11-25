@@ -296,6 +296,8 @@ static struct {
     uint32_t btn;
     uint8_t redraw;
     uint8_t page;                        /* the knobs' page: 0 or 1 */
+    uint8_t opening;                     /* the opening: the glow swelling with the first tones */
+    uint32_t open_t0;
 } ui;
 
 void app_say(const char *a, const char *b)
@@ -310,6 +312,10 @@ void app_say(const char *a, const char *b)
     ui.msg[1][i] = 0;
     ui.msg_until = plat_ms() + 1300u;
     ui.redraw = 1;
+    if (ui.opening) {                    /* a control touched: straight to the screen */
+        ui.opening = 0;
+        lcd_fill(0, 0, 240, 240, C_BLACK);
+    }
     if (ann_on()) {
         t[0] = 0;
         text_cat(t, ui.msg[0]);
@@ -494,6 +500,67 @@ static void input(void)
 
 void app_input_only(void) { input(); }
 
+/* ------------------------------------------------------------- the look --- */
+/* After Marian Zazeela's light in the Dream House: magenta and violet on black. The platform's five steps
+ * (gfx.c: rules, inactive, labels, secondary, values), with the hue in the two brightest, so colour still
+ * means something: a value, a level. */
+static const uint16_t ZPAL[5] = {RGB(46, 30, 60), RGB(100, 76, 122), RGB(184, 166, 206), RGB(170, 130, 255),
+                                 RGB(255, 72, 200)};
+static void palette_dream(void)
+{
+    int k;
+    for (k = 0; k < 5; k++)
+        pal[k] = ZPAL[k];
+}
+
+/* violet (0) to magenta (1), scaled by k (0..1): the tones low to high, the glow edge to centre */
+static uint16_t glow_rgb(float t, float k)
+{
+    float r = (150.0f + 105.0f * t) * k, g = (80.0f - 10.0f * t) * k, b = (255.0f - 55.0f * t) * k;
+    return RGB((uint32_t)r, (uint32_t)g, (uint32_t)b);
+}
+
+/* the glow: magenta light from the middle of the screen fading to violet and black, brightness k; with the
+ * name over it. Drawn in two bands of 120 rows */
+static void draw_glow(float k)
+{
+    int32_t band, x, y;
+    for (band = 0; band < 2; band++) {
+        cv_begin(240, 120, C_BLACK);
+        for (y = 0; y < 120; y++) {
+            float dy = (float)(y + band * 120 - 100);
+            for (x = 0; x < 240; x++) {
+                float dx = (float)(x - 120), d2 = dx * dx + dy * dy * 1.6f;
+                float f = k / (1.0f + d2 * (1.0f / 3600.0f));   /* bright core, long soft edge */
+                float t = fm_clampf(1.0f - d2 * (1.0f / 16000.0f), 0.0f, 1.0f);
+                if (f > 0.01f) {             /* dithered (4 x 4 Bayer): the 16-bit screen's steps don't ring */
+                    static const uint8_t BAYER[16] = {0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5};
+                    float dd = ((float)BAYER[((y & 3) << 2) | (x & 3)] + 0.5f) * (1.0f / 16.0f);
+                    float kk = fm_minf(f, 1.0f);
+                    uint32_t r = (uint32_t)fm_minf((150.0f + 105.0f * t) * kk + dd * 8.0f, 255.0f);
+                    uint32_t g = (uint32_t)fm_minf((80.0f - 10.0f * t) * kk + dd * 4.0f, 255.0f);
+                    uint32_t bl = (uint32_t)fm_minf((255.0f - 55.0f * t) * kk + dd * 8.0f, 255.0f);
+                    cv_pset(x, y, RGB(r, g, bl));
+                }
+            }
+        }
+        if (band == 0) {
+            cv_text(120 - text_w(&FONT_L, APP_NAME) / 2, 78, &FONT_L, APP_NAME, C_WHITE);
+        } else {
+            static const char *const L1 = "AFTER LA MONTE YOUNG", *const L2 = "AND MARIAN ZAZEELA";
+            cv_text(120 - text_w(&FONT_XS, L1) / 2, 30, &FONT_XS, L1, RGB(236, 220, 250));
+            cv_text(120 - text_w(&FONT_XS, L2) / 2, 46, &FONT_XS, L2, RGB(236, 220, 250));
+        }
+        cv_blit(0, (uint32_t)(band * 120));
+    }
+}
+
+void app_splash(void)                    /* the boot screen (APP_SPLASH): the glow, low */
+{
+    palette_dream();
+    draw_glow(0.3f);
+}
+
 /* the ratio between the lowest two tones, large: "3:2" (the big fonts have no colon: two dots drawn) */
 static void draw_ratio(int32_t cy)
 {
@@ -557,7 +624,7 @@ static void draw_cluster(float u)
                                       fm_log2f((float)h1 / (float)h0) * 218.0f + 0.5f) : 109);
         cv_rect(x, 54, 2, 50, C_LINE);
         if (hgt)
-            cv_rect(x, 104 - hgt, 2, hgt, C_HI);
+            cv_rect(x, 104 - hgt, 2, hgt, glow_rgb((float)(x - 10) / 218.0f, 1.0f));
     }
     int_text(h0, t, 0);
     cv_text(10, 107, &FONT_XS, t, C_DIM);
@@ -605,7 +672,7 @@ static void draw_chord(float u)
         bar = (int32_t)(fm_clampf(dr_level[i] / amax, 0.0f, 1.0f) * 26.0f + 0.5f);
         cv_rect(x + 76, y + 6, 26, 4, C_LINE);
         if (bar)
-            cv_rect(x + 76, y + 6, bar, 4, C_HI);
+            cv_rect(x + 76, y + 6, bar, 4, glow_rgb((float)i / (float)(p->n - 1), 1.0f));
     }
 }
 
@@ -682,8 +749,36 @@ knobs:
 
 void app_ui_init(void)
 {
+    static uint8_t once;
+    palette_dream();
     lcd_fill(0, 0, 240, 240, C_BLACK);
     ui.redraw = 1;
+    if (!once) {                         /* the first time only: the opening */
+        once = 1;
+        ui.opening = 1;
+        ui.open_t0 = plat_ms();
+    }
+}
+
+/* the opening: the glow swells from the boot screen's 0.3 to full over 3 s, as the drone swells in, holds,
+ * then gives way to the screen at 4.5 s (or at the first touch of a control) */
+static void opening_frame(void)
+{
+    static uint32_t last;
+    uint32_t now = plat_ms(), e = now - ui.open_t0;
+    float a;
+    if (e >= 4500u || ui.btn) {
+        ui.opening = 0;
+        lcd_fill(0, 0, 240, 240, C_BLACK);
+        ui.redraw = 1;
+        return;
+    }
+    if (now - last < 50u)
+        return;
+    last = now;
+    a = fm_minf((float)e / 3000.0f, 1.0f);
+    a = a * a * (3.0f - 2.0f * a);       /* eased */
+    draw_glow(0.3f + 0.7f * a);
 }
 
 void app_frame(void)
@@ -693,6 +788,11 @@ void app_frame(void)
     input();
     evolve_tick();
     speak();
+    if (ui.opening) {
+        opening_frame();
+        if (ui.opening)
+            return;
+    }
     if (ui.msg_until && now >= ui.msg_until) {
         ui.msg_until = 0;
         ui.redraw = 1;

@@ -38,6 +38,7 @@ jobs:
 
   # the browser emulator (fm1-base tools/build.py --web), published on GitHub Pages
   emulator:
+    if: github.ref == 'refs/heads/main'      # the site is main's; a branch builds only the firmware
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

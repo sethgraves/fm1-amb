@@ -1,6 +1,9 @@
 # DREAM in the host simulator: python3 base/tools/build.py dream --host, then
 #   dream/build/host/DREAM_host dream/tests/basic.txt dream/build/host
 wait 600
+shot open-a.png
+wait 2000
+shot open-b.png
 expect playing 1
 expect piece 0
 wav swell.wav

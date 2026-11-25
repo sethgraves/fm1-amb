@@ -7,7 +7,9 @@
 #include "plat.h"
 
 #define APP_NAME "DREAM"
-#define APP_SPLASH_RGB RGB(120, 60, 200)
+#define APP_SPLASH_RGB RGB(255, 70, 200)
+#define APP_SPLASH                       /* app_splash(): the boot screen, the glow and the name */
+#define APP_CANVAS_PX (240u * 150u)      /* the middle of the screen in one canvas: 240 x 150 */
 #define APP_BLOCK 256u                   /* frames per audio block: 5.8 ms at 44.1 kHz */
 
 /* the store: the settings and the panel calibration (the platform's), and their flash offsets */
@@ -22,6 +24,7 @@ void app_ui_init(void);
 void app_frame(void);
 void app_input_only(void);
 void app_say(const char *a, const char *b);
+void app_splash(void);
 
 /* the host simulator's checks (host/plat_host.c "expect") */
 #define APP_HOST_EXPECT
