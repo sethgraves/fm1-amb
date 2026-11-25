@@ -6,6 +6,7 @@ wait 2000
 shot open-b.png
 expect playing 1
 expect piece 0
+expect variant 1
 wav swell.wav
 wait 12000
 wavstop
@@ -125,3 +126,38 @@ shot wtp.png
 wav wtp.wav
 wait 20000
 wavstop
+# versions (ALGORITHM): the Dream House's bases
+turn PRESET -10
+turn PRESET 1
+wait 300
+expect piece 1
+expect variant 6
+expect ntones 18
+turn ALGO -5
+wait 12000
+expect variant 1
+expect ntones 16
+shot base8.png
+turn ALGO 10
+wait 12000
+expect variant 7
+expect ntones 15
+shot emptybase.png
+# the Magic Opening Chord
+turn PRESET 2
+wait 300
+expect piece 3
+turn ALGO 1
+wait 15000
+expect variant 1
+expect ntones 13
+shot magicopening.png
+wav magicopening.wav
+wait 15000
+wavstop
+# 1960 #7 in B4
+turn PRESET -10
+turn ALGO 1
+wait 8000
+expect variant 2
+shot b4.png

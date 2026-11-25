@@ -18,54 +18,102 @@
 #include "drone.h"
 
 /* ---------------------------------------------------------------- pieces --- */
-/* each: a unit frequency (Hz, before PITCH and FINE) and the harmonics that sound on it */
+/* A piece (PRESET) is a unit frequency (Hz, before PITCH and FINE) and its versions (ALGORITHM): each version a
+ * set of harmonics on that unit. piece_t is one version; work_t the piece. */
 typedef struct {
     const char *name;                    /* on the screen (capitals) */
-    float unit_hz;
     uint8_t n;
     uint8_t nbase;                       /* the first nbase harmonics are the base, under the rest */
-    uint8_t drift;                       /* DRIFT when the piece is chosen, 0 .. 100 */
     uint16_t harm[DR_MAXT];              /* rising */
 } piece_t;
 
+typedef struct {
+    float unit_hz;
+    uint8_t drift;                       /* DRIFT when the piece is chosen, 0 .. 100 */
+    uint8_t nvar;                        /* its versions */
+    uint8_t var0;                        /* the one it starts on */
+    const piece_t *var;
+} work_t;
+
 #define B3_HZ 246.941651f                /* B below middle C, A = 440 */
 #define WTP_EB3 148.994709f              /* The Well-Tuned Piano's Eb (440 * 128/189, an octave down) */
-static const piece_t PIECES[] = {
-    /* Composition 1960 #7: B and F#, "to be held for a long time". Here as a pure fifth: harmonics 2 and 3 of
-     * a unit an octave under the B, so the F# sits 2 cents above equal temperament */
-    {"COMPOSITION 1960 #7", B3_HZ * 0.5f, 2, 0, 0, {2, 3}},
-    /* The Base 9:7:4 Symmetry in Prime Time When Centered above and below The Lowest Term Primes in The Range 288
-     * to 224 with The Addition of 279 and 261 ... with The Addition of 119 (the Dream House), worked from its title:
-     *   above, to 288: the primes 128-144 (131, 137, 139) and 64-72 (67, 71) times powers of 2: 262 274 278 268 284
-     *   below, to 224: the primes 112-126 (113), 56-63 (59, 61) and 28-31.5 (29, 31) likewise: 226 236 244 232 248
-     *   with 288 and 224, the additions 279 and 261, and 2 x 119 = 238
-     * The base 9:7:4 as harmonics 16, 28, 36, two octaves under 36:28 = 9:7 = 288:224's own ratio.
-     * The unit 4.5 Hz puts the cluster at 1008 - 1296 Hz and the base at 72, 126, 162 Hz; PITCH moves it all. */
-    {"DREAM HOUSE 9:7:4", 4.5f, 18, 3, 0,
-     {16, 28, 36, 224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
-    /* The Well-Tuned Piano: fifths and harmonic sevenths over Eb, its A (189/128) at 440 Hz, so Eb = 297.99 Hz
-     * (Gann 1993). The Opening Chord: Eb Bb C Eb F Bb, 4:6:7:8:9:12, here from the Eb an octave under that */
-    {"THE OPENING CHORD", WTP_EB3 * 0.25f, 6, 0, 0, {4, 6, 7, 8, 9, 12}},
-    /* The Magic Chord: the keys E F A Bb D E G A, which sound 567/512, 9/8, 189/128, 3/2, 63/32 of Eb, then
-     * the E, G (21/16) and A an octave up: 567 576 756 768 1008 1134 1344 1512 on Eb/512, or a third of that.
-     * No Eb: the chord's fundamental is absent. Its top A is the 440. */
-    {"THE MAGIC CHORD", WTP_EB3 * 3.0f / 512.0f, 8, 0, 0, {189, 192, 252, 256, 336, 378, 448, 504}},
-    /* A drift study: "two or more sine waves, the frequencies of which are tuned to relate to each other as
-     * rational frequency ratios" (Young, 1968), their phase angles let drift. The tones of 14 VII 73 aren't
-     * published (three sine waves); these are a choice: 6:7:8 on 1960 #7's B series, F#5 A5 B5, the B at 988 Hz */
-    {"DRIFT STUDY", B3_HZ * 0.5f, 3, 0, 40, {6, 7, 8}},
-    /* Map of 49's Dream: "sine waves sustained in various relationships over one continuous sine wave drone",
-     * the ratios without 5. Its own sets aren't published; this is a choice: a 60 Hz drone (8) under
-     * 49:56:63:72, all of 2, 3 and 7, led by 49 = 7 x 7 */
-    {"MAP OF 49'S DREAM", 7.5f, 5, 1, 0, {8, 49, 56, 63, 72}},
-    /* The Well-Tuned Piano's tuning entire: its twelve pitches (Eb 1/1, E 567/512, F 9/8, F# 147/128, G 21/16,
-     * G# 1323/1024, A 189/128, Bb 3/2, B 49/32, C 7/4, C# 441/256, D 63/32) in three octaves from the Eb, 36 tones
-     * on Eb/1024. Not a chord Young plays; the lattice his chords come from, all at once. DENSITY thins it
-     * toward Eb and Bb; EVOLVE breathes it */
-    {"WELL-TUNED PIANO TUNING", WTP_EB3 / 1024.0f, 36, 0, 0,
+
+/* Composition 1960 #7: B and F#, "to be held for a long time". Here as a pure fifth, 2:3, so the F# sits 2 cents
+ * above equal temperament; in three octaves, on a unit two octaves under B3 */
+static const piece_t V1960[] = {
+    {"COMPOSITION 1960 #7  B2", 2, 0, {2, 3}},
+    {"COMPOSITION 1960 #7  B3", 2, 0, {4, 6}},
+    {"COMPOSITION 1960 #7  B4", 2, 0, {8, 12}},
+};
+
+/* The Base 9:7:4 Symmetry in Prime Time When Centered above and below The Lowest Term Primes in The Range 288
+ * to 224 with The Addition of 279 and 261 ... with The Addition of 119 (the Dream House), worked from its title:
+ *   above, to 288: the primes 128-144 (131, 137, 139) and 64-72 (67, 71) times powers of 2: 262 274 278 268 284
+ *   below, to 224: the primes 112-126 (113), 56-63 (59, 61) and 28-31.5 (29, 31) likewise: 226 236 244 232 248
+ *   with 288 and 224, the additions 279 and 261, and 2 x 119 = 238
+ * Its inclusory optional bases, as the title lists them: 7; 8; 14:8; 18:14:8; 18:16:14; 18:16:14:8; 9:7:4; or the
+ * empty base. Each at four times its numbers (9:7:4 as 36:28:16, two octaves under 9:7 = 288:224's own ratio).
+ * The unit 4.5 Hz puts the cluster at 1008 - 1296 Hz; PITCH moves it all. */
+static const piece_t VDREAM[] = {
+    {"DREAM HOUSE  BASE 7", 16, 1, {28, 224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
+    {"DREAM HOUSE  BASE 8", 16, 1, {32, 224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
+    {"DREAM HOUSE  BASE 14:8", 17, 2, {32, 56, 224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
+    {"DREAM HOUSE  BASE 18:14:8", 18, 3, {32, 56, 72, 224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
+    {"DREAM HOUSE  BASE 18:16:14", 18, 3, {56, 64, 72, 224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
+    {"DREAM HOUSE  BASE 18:16:14:8", 19, 4, {32, 56, 64, 72, 224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
+    {"DREAM HOUSE  BASE 9:7:4", 18, 3, {16, 28, 36, 224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
+    {"DREAM HOUSE  EMPTY BASE", 15, 0, {224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
+};
+
+/* The Well-Tuned Piano: fifths and harmonic sevenths over Eb, its A (189/128) at 440 Hz, so Eb = 297.99 Hz
+ * (Gann 1993). The Opening Chord: Eb Bb C Eb F Bb, 4:6:7:8:9:12, here from the Eb an octave under that */
+static const piece_t VOPEN[] = {
+    {"THE OPENING CHORD", 6, 0, {4, 6, 7, 8, 9, 12}},
+};
+
+/* The Magic Chord: the keys E F A Bb D E G A, which sound 567/512, 9/8, 189/128, 3/2, 63/32 of Eb, then the E,
+ * G (21/16) and A an octave up: 567 576 756 768 1008 1134 1344 1512 on Eb/512. No Eb: the chord's fundamental
+ * is absent. Its top A is the 440. The Magic Opening Chord: the Opening Chord (on Eb3, 512) sounding with it,
+ * which adds its C and Eb */
+static const piece_t VMAGIC[] = {
+    {"THE MAGIC CHORD", 8, 0, {567, 576, 756, 768, 1008, 1134, 1344, 1512}},
+    {"THE MAGIC OPENING CHORD", 13, 0, {512, 567, 576, 756, 768, 896, 1008, 1024, 1134, 1152, 1344, 1512, 1536}},
+};
+
+/* A drift study: "two or more sine waves, the frequencies of which are tuned to relate to each other as
+ * rational frequency ratios" (Young, 1968), their phase angles let drift. The tones of 14 VII 73 aren't
+ * published (three sine waves); these are a choice: 6:7:8 on 1960 #7's B series, F#5 A5 B5, the B at 988 Hz */
+static const piece_t VDRIFT[] = {
+    {"DRIFT STUDY", 3, 0, {6, 7, 8}},
+};
+
+/* Map of 49's Dream: "sine waves sustained in various relationships over one continuous sine wave drone", the
+ * ratios without 5. Its own sets aren't published; this is a choice: a 60 Hz drone (8) under 49:56:63:72, all
+ * of 2, 3 and 7, led by 49 = 7 x 7 */
+static const piece_t VMAP[] = {
+    {"MAP OF 49'S DREAM", 5, 1, {8, 49, 56, 63, 72}},
+};
+
+/* The Well-Tuned Piano's tuning entire: its twelve pitches (Eb 1/1, E 567/512, F 9/8, F# 147/128, G 21/16,
+ * G# 1323/1024, A 189/128, Bb 3/2, B 49/32, C 7/4, C# 441/256, D 63/32) in three octaves from the Eb, 36 tones
+ * on Eb/1024. Not a chord Young plays; the lattice his chords come from, all at once. DENSITY thins it toward
+ * Eb and Bb; EVOLVE breathes it */
+static const piece_t VWTP[] = {
+    {"WELL-TUNED PIANO TUNING", 36, 0,
      {1024, 1134, 1152, 1176, 1323, 1344, 1512, 1536, 1568, 1764, 1792, 2016,
       2048, 2268, 2304, 2352, 2646, 2688, 3024, 3072, 3136, 3528, 3584, 4032,
       4096, 4536, 4608, 4704, 5292, 5376, 6048, 6144, 6272, 7056, 7168, 8064}},
+};
+
+#define NV(v) ((uint8_t)(sizeof v / sizeof v[0]))
+static const work_t PIECES[] = {
+    {B3_HZ * 0.25f, 0, NV(V1960), 1, V1960},
+    {4.5f, 0, NV(VDREAM), 6, VDREAM},
+    {WTP_EB3 * 0.25f, 0, NV(VOPEN), 0, VOPEN},
+    {WTP_EB3 / 512.0f, 0, NV(VMAGIC), 0, VMAGIC},
+    {B3_HZ * 0.5f, 40, NV(VDRIFT), 0, VDRIFT},
+    {7.5f, 0, NV(VMAP), 0, VMAP},
+    {WTP_EB3 / 1024.0f, 0, NV(VWTP), 0, VWTP},
 };
 #define NPIECES ((int)(sizeof PIECES / sizeof PIECES[0]))
 
@@ -83,7 +131,8 @@ typedef struct {
     uint8_t density;                     /* DENSITY: % of the tones above the base that sound, 0 .. 100 */
     int8_t balance;                      /* BALANCE: the base, dB, -12 .. +12 */
     uint8_t evolve;                      /* EVOLVE: minutes a breath, 0 (off) .. 60 */
-    uint8_t rsv[2];
+    uint8_t variant;                     /* ALGORITHM: the piece's version */
+    uint8_t rsv;
 } settings_t;
 static settings_t set;
 static uint8_t set_dirty;
@@ -101,14 +150,19 @@ static void settings_defaults(void)
     set.density = 100;
     set.balance = 0;
     set.evolve = 0;
+    set.variant = PIECES[0].var0;
 }
 
 static int settings_ok(void)
 {
     return set.magic == SET_MAGIC && set.piece < NPIECES && set.semi >= -12 && set.semi <= 12 && set.fine >= -50 &&
            set.fine <= 50 && set.spread <= 100 && set.tilt >= -12 && set.tilt <= 12 && set.playing <= 1 && set.drift <= 100 &&
-           set.density <= 100 && set.balance >= -12 && set.balance <= 12 && set.evolve <= 60;
+           set.density <= 100 && set.balance >= -12 && set.balance <= 12 && set.evolve <= 60 &&
+           set.variant < PIECES[set.piece].nvar;
 }
+
+/* the piece's version now */
+static const piece_t *cur(void) { return &PIECES[set.piece].var[set.variant]; }
 
 /* ------------------------------------------------------------ the drone --- */
 static dr_state_t st;
@@ -116,7 +170,7 @@ static uint8_t st_dirty;                 /* a change not yet taken by the render
 
 static float unit_hz(void)
 {
-    const piece_t *p = &PIECES[set.piece];
+    const work_t *p = &PIECES[set.piece];
     return p->unit_hz * fm_exp2f(((float)set.semi * 100.0f + (float)set.fine) * (1.0f / 1200.0f));
 }
 
@@ -137,7 +191,7 @@ static uint32_t odd_part(uint32_t h)
 
 static void rank_tones(void)
 {
-    const piece_t *p = &PIECES[set.piece];
+    const piece_t *p = cur();
     int i, j;
     n_upper = (uint8_t)(p->n - p->nbase);
     for (i = 0; i < p->n; i++) {
@@ -164,7 +218,7 @@ static int sounding_count(void)          /* DENSITY times EVOLVE's breath, at le
 
 static void drone_update(void)
 {
-    const piece_t *p = &PIECES[set.piece];
+    const piece_t *p = cur();
     float sum = 0.0f, s = (float)set.spread * 0.01f, db_oct = (float)set.tilt * 0.5f;
     float base_g = fm_db2lin((float)set.balance);
     uint16_t hmin = 0xFFFFu;
@@ -438,7 +492,7 @@ static void speak(void)                  /* a screen reader that has just starte
     if (ann_on() && ann_where()) {
         t[0] = 0;
         text_cat(t, APP_NAME ". ");
-        text_cat(t, PIECES[set.piece].name);
+        text_cat(t, cur()->name);
         text_cat(t, set.playing ? ". PLAYING" : ". STOPPED");
         ann_say(t, 0, ANN_NOW);
     }
@@ -476,10 +530,11 @@ static void input(void)
             set.balance = 0;
             set.evolve = 0;
             evolve_now = 1.0f;
+            set.variant = PIECES[p].var0;
             set_dirty = 1;
             drone_update();
         }
-        app_say(PIECES[set.piece].name, "");
+        app_say(cur()->name, "");
     }
     if ((e = plat_enc(EN_SELECT)) != 0) {
         ui.page = (uint8_t)(e > 0);
@@ -493,7 +548,20 @@ static void input(void)
         knob_turn(ui.page * 4 + 2, e);
     if ((e = plat_enc(EN_K4)) != 0)
         knob_turn(ui.page * 4 + 3, e);
-    (void)plat_enc(EN_ALGO);
+    if ((e = plat_enc(EN_ALGO)) != 0) {    /* ALGORITHM: the piece's versions */
+        int32_t v = clamp((int32_t)set.variant + e, 0, PIECES[set.piece].nvar - 1);
+        if (v != set.variant) {
+            set.variant = (uint8_t)v;
+            set_dirty = 1;
+            drone_update();
+        }
+        {   /* the version's own part of the name, after the piece's: "BASE 18:16:14:8" */
+            const char *n = cur()->name, *q = n;
+            while (*q && !(q[0] == ' ' && q[1] == ' '))
+                q++;
+            app_say(*q ? q + 2 : n, "");
+        }
+    }
     if (btn != ui.btn)
         ui.redraw = 1;
     ui.btn = btn;
@@ -568,13 +636,21 @@ void app_splash(void)                    /* the boot screen (APP_SPLASH): the gl
 /* the ratio between the lowest two tones, large: "3:2" (the big fonts have no colon: two dots drawn) */
 static void draw_ratio(int32_t cy)
 {
-    const piece_t *p = &PIECES[set.piece];
+    const piece_t *p = cur();
     char a[8], b[8];
     int32_t wa, wb, x;
     if (p->n < 2)
         return;
-    int_text(p->harm[1], a, 0);
-    int_text(p->harm[0], b, 0);
+    {
+        uint32_t x = p->harm[1], y = p->harm[0];
+        while (y) {
+            uint32_t r = x % y;
+            x = y;
+            y = r;
+        }
+        int_text((int32_t)(p->harm[1] / x), a, 0);
+        int_text((int32_t)(p->harm[0] / x), b, 0);
+    }
     wa = text_w(&FONT_L, a);
     wb = text_w(&FONT_L, b);
     x = 120 - (wa + 14 + wb) / 2;
@@ -588,7 +664,7 @@ static void draw_ratio(int32_t cy)
  * as a row of notes under it. Drawn into the middle canvas (240 x 150), under the piece's name. */
 static void draw_cluster(float u)
 {
-    const piece_t *p = &PIECES[set.piece];
+    const piece_t *p = cur();
     int32_t i, h0, h1, x, c;
     char t[24], nm[8];
     float amax = 1e-6f;
@@ -649,17 +725,28 @@ static void draw_cluster(float u)
  * the note, its cents from equal temperament, a bar for its level */
 static void draw_chord(float u)
 {
-    const piece_t *p = &PIECES[set.piece];
+    const piece_t *p = cur();
     char t[64], nm[8];
     const felucca_font_t *f;
     int32_t i, c, w;
     float amax = 1e-6f;
-    t[0] = 0;
-    for (i = 0; i < p->n; i++) {
-        if (i)
-            text_cat(t, ":");
-        int_text(p->harm[i], nm, 0);
-        text_cat(t, nm);
+    {   /* the ratio in lowest terms */
+        uint32_t g = 0, a, b;
+        for (i = 0; i < p->n; i++) {
+            for (a = g, b = p->harm[i]; b;) {
+                uint32_t r = a % b;
+                a = b;
+                b = r;
+            }
+            g = a;
+        }
+        t[0] = 0;
+        for (i = 0; i < p->n; i++) {
+            if (i)
+                text_cat(t, ":");
+            int_text((int32_t)(p->harm[i] / (g ? g : 1u)), nm, 0);
+            text_cat(t, nm);
+        }
     }
     f = text_w(&FONT_B, t) <= 224 ? &FONT_B : &FONT_XS;
     w = text_w(f, t);
@@ -682,7 +769,7 @@ static void draw_chord(float u)
 
 static void draw(void)
 {
-    const piece_t *p = &PIECES[set.piece];
+    const piece_t *p = cur();
     float u = unit_hz();
     char t[32], nm[8];
     int32_t i, y;
@@ -821,6 +908,10 @@ int app_expect(const char *what, int *got)
         *got = set.semi;
     else if (!strcmp(what, "fine"))
         *got = set.fine;
+    else if (!strcmp(what, "variant"))
+        *got = set.variant;
+    else if (!strcmp(what, "ntones"))
+        *got = cur()->n;
     else if (!strcmp(what, "density"))
         *got = set.density;
     else if (!strcmp(what, "balance"))
