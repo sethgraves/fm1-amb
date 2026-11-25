@@ -1,0 +1,9 @@
+{
+  "what": "Pure sine tones in just intonation, phase-locked and held. A tribute to La Monte Young: Composition 1960 #7, the Dream House with its eight bases, the Well-Tuned Piano's Opening and Magic Chords and tuning, a drift study and Map of 49's Dream. Density, drift and a slowly breathing density.",
+  "author": "Seth Graves",
+  "kinds": "synth",
+  "play": "https://sethgraves.github.io/fm1-dream/",
+  "image": "app/docs/img/screen-playing.png",
+  "color": "#FF48C8",
+  "sounds": "none"
+}
