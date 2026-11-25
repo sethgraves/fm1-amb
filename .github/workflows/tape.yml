@@ -1,0 +1,38 @@
+# TAPE: the device firmware, built on GitHub by the shared FM-1 builder (zvenson/fm1-build). Run it from
+# Actions ("Run workflow"), or push to a tape/* branch. The package is in the run's "packages" artifact; the
+# build's log ("image ... SRAM ... free") says how much RAM the loop leaves.
+name: TAPE firmware
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['tape/**']
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    uses: zvenson/fm1-build/.github/workflows/build.yml@v1
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      sdk: true
+      tests-block: true
+      build: |
+        set -euo pipefail
+        git submodule update --init --recursive
+        sudo apt-get install -y -qq libfribidi0
+        python3 -c "from PIL import features; assert features.check('raqm'), 'Pillow without raqm'"
+        python3 base/tools/build.py tape
+        mkdir -p build/out
+        cp tape/build/tape.fwsc build/out/
+        cp tape/build/firmware.json build/out/ 2>/dev/null || true
+      test: |
+        set -euo pipefail
+        python3 base/tools/build.py tape --host
+        mkdir -p build/host-run
+        tape/build/host/tape_host tape/tests/probe.txt build/host-run
+      packages: build/out/*

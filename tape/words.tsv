@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: MPL-2.0
+# TAPE's words for a screen reader (fm1-reader): the text on the screen <TAB> what to say.
+# url: https://sethgraves.github.io/fm1-amb/words/
+TAPE PROBE	tape probe
+CPU	C P U
+PEAK	peak
+RATE	rate
+FFT	F F T
+OVERLAP	overlap
+CHANNELS	channels
+WEAR	wear
+LOOP	loop
+PASSES	passes
+MONO	mono
+STEREO	stereo
+OFF	off
+ON	on
+FRESH LOOP	fresh loop
