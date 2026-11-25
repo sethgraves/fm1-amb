@@ -1,20 +1,20 @@
 {
   "schema": 1,
-  "id": "amb",
-  "name": "AMB-1",
-  "author": "Charles Vestal",
+  "id": "dream",
+  "name": "DREAM",
+  "author": "Seth Graves",
   "license": "MPL-2.0",
-  "tagline": "A generative ambient machine for the FM-1",
-  "description": "AMB-1 turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's Music for Airports. It plays itself from the moment it's switched on: breathing voices, soft bells on tape loops of unequal length, a gliding bass and quiet Euclidean percussion, through a tape echo and a plate reverb. It has eight pieces, and it is an album as much as an instrument. You don't perform it, you tend it: pick a piece and a scale, take notes out, put them back, and let it grow.",
-  "tags": ["ambient", "generative", "fm"],
-  "install": "https://charlesvestal.github.io/fm1-amb/install/",
-  "site": "https://charlesvestal.github.io/fm1-amb/",
-  "source": "https://github.com/charlesvestal/fm1-amb",
-  "screenshot": "docs/img/screen-garden.png",
+  "tagline": "Sine tones in just intonation, held. After La Monte Young and Marian Zazeela.",
+  "description": "A tribute to La Monte Young: pure sine tones tuned in whole-number ratios and held, phase-locked, for as long as the FM-1 is on. Pieces after Composition 1960 No. 7, the Dream House (with its eight bases), the Well-Tuned Piano's Opening and Magic Chords and its tuning, a drift study and Map of 49's Dream (the last two in tones chosen by his stated rules; his own are unpublished). Density, drift and a slowly breathing density. No effects, no samples.",
+  "tags": ["synth", "ambient", "generative", "experimental"],
+  "install": "https://thefirmwarehub.com/",
+  "site": "https://sethgraves.github.io/fm1-dream/",
+  "source": "https://github.com/sethgraves/fm1-dream",
+  "screenshot": "app/docs/img/screen-playing.png",
   "hardware": {
     "models": ["FM-1"],
     "flash": ["856014", "B36014"],
-    "features": ["usb-audio-in", "screen-reader"]
+    "features": ["usb-audio-in", "usb-audio-out", "screen-reader"]
   },
-  "credits": "Built on fm1-base and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
+  "credits": "Built on fm1-base by Charles Vestal and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
 }

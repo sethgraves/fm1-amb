@@ -25,15 +25,15 @@ jobs:
         git submodule update --init --recursive
         sudo apt-get install -y -qq libfribidi0
         python3 -c "from PIL import features; assert features.check('raqm'), 'Pillow without raqm'"
-        python3 base/tools/build.py dream
+        python3 base/tools/build.py app
         mkdir -p build/out
-        cp dream/build/dream.fwsc build/out/
-        cp dream/build/firmware.json build/out/ 2>/dev/null || true
+        cp app/build/dream.fwsc build/out/
+        cp app/build/firmware.json build/out/ 2>/dev/null || true
       test: |
         set -euo pipefail
-        python3 base/tools/build.py dream --host
+        python3 base/tools/build.py app --host
         mkdir -p build/host-run
-        dream/build/host/dream_host dream/tests/basic.txt build/host-run
+        app/build/host/dream_host app/tests/basic.txt build/host-run
       packages: build/out/*
 
   # the browser emulator (fm1-base tools/build.py --web), published on GitHub Pages
@@ -58,11 +58,11 @@ jobs:
           "$RUNNER_TEMP/emsdk/emsdk" install 6.0.10
           "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.10
           set +u; source "$RUNNER_TEMP/emsdk/emsdk_env.sh"; set -u
-          python3 base/tools/build.py dream --web
-          ls -la dream/build/emu
+          python3 base/tools/build.py app --web
+          ls -la app/build/emu
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dream/build/emu
+          path: app/build/emu
 
   pages:
     needs: emulator

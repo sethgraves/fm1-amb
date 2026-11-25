@@ -1,67 +1,65 @@
-# AMB-1 for the M-VAVE FM-1
+# DREAM
 
-AMB-1 turns the M-VAVE FM-1 into a generative ambient machine, inspired by Brian Eno's
-*Music for Airports*. It plays itself from the moment it's switched on: breathing voices, soft
-bells on tape loops of unequal length, a gliding bass and quiet Euclidean percussion, all through
-a tape echo, a long tape loop and a plate reverb. You don't perform it, you tend it: pick a piece
-and a scale, take notes out, put them back, and let it grow.
+Firmware for the M-VAVE FM-1: pure sine tones, tuned as whole-number harmonics of one frequency, held for as long
+as the FM-1 is on. A tribute to La Monte Young, with a look after Marian Zazeela's light.
 
-![AMB-1's screen: the garden](docs/img/screen-garden.png) ![Voices](docs/img/screen-voices.png) ![Frozen](docs/img/screen-frozen.png)
+- **Try it in your browser** (no FM-1 needed): <https://sethgraves.github.io/fm1-dream/>
+- **Install it**: from [The Firmware Hub](https://thefirmwarehub.com/), or with M-Flasher and the `.fwsc` from
+  [the latest release](https://github.com/sethgraves/fm1-dream/releases/latest)
 
-- **Try it in your browser** (no FM-1 needed): <https://charlesvestal.github.io/fm1-amb/emu/>
-- **Install it** (Chrome or Edge, with the FM-1 plugged in): <https://charlesvestal.github.io/fm1-amb/install/>
-- **Read the manual**: <https://charlesvestal.github.io/fm1-amb/manual/> (source: [docs/MANUAL.md](docs/MANUAL.md))
-- **Download the firmware file**: [releases](https://github.com/charlesvestal/fm1-amb/releases)
+![DREAM on the FM-1](app/docs/img/screen-playing.png)
 
-Installing it is at your own risk, though it's hard to get stuck: the web installer can put
-M-VAVE's own firmware back, and an FM-1 that fails to start twice comes up in a safe mode the
-installer can reach.
+Each tone's phase is a 32-bit integer stepping by exactly its harmonic number times the series' step, so the ratios
+are exact and the tones never drift against each other, unless DRIFT asks them to. No filters, no effects, no
+saturation: a linear sum with headroom.
 
-## In short
+## The pieces
 
-| | |
-|---|---|
-| Keys | The scale: each key adds its note or takes it out |
-| PLAY · REC · EDIT | Grow / rest · freeze · the next chord |
-| HOME · ENV · ARP · LFO · SEQ · FX · GLO | The pages: Garden, Pad, Bells, Bass, Pulse, Space, Setup; KNOB 1–4 set their values, a layer's level on KNOB 1 |
-| SELECT | The previous or next page; with HOME held, the tempo |
-| ALGORITHM · PRESETS | The mode · the piece (eight of them) |
-| OCT− / OCT+ | The bells' octave |
-| SAVE | Saves; held, puts the piece back to its recipe |
+PRESET chooses the piece, ALGORITHM its version.
 
-Hold any button for a second and a card says what it does.
+| Piece | Versions | Source |
+| --- | --- | --- |
+| Composition 1960 #7 | B and F# at 3:2, in B2, B3, B4 | the score's two pitches, as a pure fifth |
+| Dream House | the eight inclusory optional bases: 7; 8; 14:8; 18:14:8; 18:16:14; 18:16:14:8; 9:7:4; empty | the 15 tones from 224 to 288, worked from the title of *The Base 9:7:4 Symmetry in Prime Time…* |
+| The Opening Chord | | The Well-Tuned Piano: Eb Bb C Eb F Bb, 4:6:7:8:9:12, Young's A (189/128) at 440 Hz |
+| The Magic Chord | the Magic Chord; the Magic Opening Chord | The Well-Tuned Piano, its keys as sounded (Gann 1993) |
+| Drift Study | | **tones chosen here**: 6:7:8 on B. The recordings' own tones are unpublished |
+| Map of 49's Dream | | **tones chosen here**: a 60 Hz drone under 49:56:63:72, without 5, by Young's stated rules |
+| Well-Tuned Piano Tuning | | the tuning's twelve pitches in three octaves, 36 tones at once |
 
-AMB-1 also tells the [FM-1 Screen Reader](https://charlesvestal.github.io/fm1-reader/) what its screen
-shows, over USB: the page and its knobs, a knob's value as it turns, the piece, the chord as it moves,
-and what each button did.
+## The controls
 
-The [manual](https://charlesvestal.github.io/fm1-amb/manual/) has the rest.
+| Control | |
+| --- | --- |
+| PLAY | the drone on / off (it swells in and fades out) |
+| PRESET, ALGORITHM | the piece, its version |
+| K1 to K4 | PITCH (semitones), FINE (cents), SPREAD (stereo), TILT (dB per octave) |
+| SELECT | the second page: DENSITY, BALANCE (the base against the rest), DRIFT, EVOLVE (the density breathing, 1 to 60 minutes) |
+| SAVE | keeps it all for the next power-on |
 
-## Building and testing
+The second page starts over with each new piece. The [manual](app/docs/MANUAL.md) has more.
 
-AMB-1 is an app on [fm1-base](https://github.com/charlesvestal/fm1-base) (`base/`, a git submodule); clone with
-`--recursive`. The toolchain and prerequisites are in [BUILDING.md](BUILDING.md):
+## Build
 
 ```
-sh tests/run_tests.sh                                  # the instrument, the app in a simulator, the web builds
-./build.sh                                             # app/build/amb.fwsc
-python3 base/tools/fm1_install.py app/build/amb.fwsc   # install it over USB
+git clone --recursive https://github.com/sethgraves/fm1-dream
+python3 base/tools/build.py app --host                      # the host simulator
+app/build/host/dream_host app/tests/basic.txt OUTDIR         # its tests: WAVs and screenshots in OUTDIR
+python3 base/tools/build.py app --web                       # the browser emulator (Emscripten)
+python3 base/tools/build.py app                             # app/build/dream.fwsc (JieLi toolchain, AC79 SDK)
 ```
 
-`app/build/host/amb_host SCRIPT OUTDIR` runs the whole app on a computer from a script
-(`tests/scenarios/*.amb`), with audio and screenshots coming out. `./build.sh --web` builds the same code for the
-browser (the emulator); `web/app/build.sh` builds the engine alone into a web app for phone and desktop.
+Releases are built on GitHub from their tag by the shared FM-1 builder
+([zvenson/fm1-build](https://github.com/zvenson/fm1-build)), with signed build provenance:
+`.github/workflows/release.yml`. Every push to `main` builds a test package and the browser emulator:
+`.github/workflows/dream.yml`.
 
-## Credits
+## Licence and credits
 
-The idea comes from Brian Eno's generative music: *Music for Airports*' tape loops of unequal
-length, and the echo chain of *Discreet Music*. The reverb is Jon Dattorro's plate ("Effect Design,
-Part 1", JAES 1997), as in [FoMni-1](https://github.com/charlesvestal/fm1-fomni); the Euclidean
-rhythms are Godfried Toussaint's reading of Bjorklund's algorithm. AMB-1 is built on
-[fm1-base](https://github.com/charlesvestal/fm1-base) and [felucca-bsp](https://github.com/hugelton/felucca-bsp),
-from [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita (Hügelton Instruments). The idea of running
-FM-1 firmware in the browser comes from [Groove OS](https://www.groove-os.com/). MPL-2.0 (0.9 and earlier:
-GPL-3.0-only); see [LICENSING.md](LICENSING.md).
+MPL-2.0 (`LICENSE`, `LICENSING.md`). Built on [fm1-base](https://github.com/charlesvestal/fm1-base) by Charles Vestal
+and [felucca-bsp](https://github.com/hugelton/felucca-bsp), from Felucca by Leo Kuroshita (Hügelton Instruments).
 
-M-VAVE and FM-1 are trademarks of their owners. AMB-1 is not affiliated with M-VAVE, Brian Eno or
-Hügelton Instruments.
+DREAM is an independent tribute. It is not affiliated with or endorsed by La Monte Young, Marian Zazeela or the MELA
+Foundation, and contains no recordings, scores or artwork of theirs: only tunings, as published by Young and by
+Kyle Gann ("La Monte Young's The Well-Tuned Piano", *Perspectives of New Music* 31/1, 1993). "M-VAVE" and "FM-1" are
+trademarks of their owners, used only to say what hardware DREAM runs on.
