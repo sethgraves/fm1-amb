@@ -123,6 +123,7 @@ static struct {
     uint32_t btn;
     uint32_t home_t;                     /* HOME went down (0: not held, or its hold already acted) */
     uint32_t sec_t;                      /* the last second of play counted */
+    uint32_t cpu_peak;                   /* the CPU's peak, counted from 3 s after power-on */
     uint8_t page, redraw;
 } ui;
 
@@ -371,7 +372,16 @@ static void draw(void)
         x = cv_text(8, 6, &FONT_B, ui.msg[0], C_WHITE);
         cv_text(x + 8, 6, &FONT_B, ui.msg[1], C_HI);
     } else {
-        cv_text(8, 6, &FONT_B, "TAPE", C_WHITE);
+        x = cv_text(8, 6, &FONT_B, "TAPE", C_WHITE);
+        t[0] = 0;                        /* the audio's share of the CPU, and its peak since power-on */
+        text_cat(t, "CPU ");
+        int_text((int32_t)plat_cpu_pct(), n);
+        text_cat(t, n);
+        text_cat(t, "% / ");
+        int_text((int32_t)ui.cpu_peak, n);
+        text_cat(t, n);
+        text_cat(t, "%");
+        cv_text(x + 10, 9, &FONT_XS, t, C_DIM);
         cv_text(232 - text_w(&FONT_XS, TP_TYPE_NAME[set.type]), 9, &FONT_XS, TP_TYPE_NAME[set.type], C_AMB);
     }
     cv_blit(0, 0);
@@ -434,6 +444,8 @@ void app_frame(void)
     uint32_t now = plat_ms();
     input();
     wear_tick();
+    if (now > 3000u && plat_cpu_pct() > ui.cpu_peak)
+        ui.cpu_peak = plat_cpu_pct();
     speak();
     if (ui.msg_until && now >= ui.msg_until) {
         ui.msg_until = 0;
