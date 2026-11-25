@@ -5,7 +5,7 @@ name: DREAM firmware
 on:
   workflow_dispatch:
   push:
-    branches: ['dream/**']
+    branches: ['main', 'dream/**']
 
 permissions:
   contents: read
@@ -35,3 +35,43 @@ jobs:
         mkdir -p build/host-run
         dream/build/host/dream_host dream/tests/basic.txt build/host-run
       packages: build/out/*
+
+  # the browser emulator (fm1-base tools/build.py --web), published on GitHub Pages
+  emulator:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the emulator
+        run: |
+          set -euo pipefail
+          python3 -m pip install -q Pillow
+          sudo apt-get install -y -qq libfribidi0
+          git clone -q https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          git -C "$RUNNER_TEMP/emsdk" checkout -q a2b92777574c2feda07994cd4f1079a3dfc151f8   # emsdk 6.0.10
+          "$RUNNER_TEMP/emsdk/emsdk" install 6.0.10
+          "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.10
+          set +u; source "$RUNNER_TEMP/emsdk/emsdk_env.sh"; set -u
+          python3 base/tools/build.py dream --web
+          ls -la dream/build/emu
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dream/build/emu
+
+  pages:
+    needs: emulator
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
