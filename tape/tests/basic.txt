@@ -1,0 +1,84 @@
+# TAPE in the host simulator: python3 base/tools/build.py tape --host, then
+#   tape/build/host/tape_host tape/tests/basic.txt OUTDIR
+wait 1500
+expect playing 1
+expect type 0
+expect scene 0
+wav cassette.wav
+wait 40000
+wavstop
+shot playing.png
+expect notes >20
+expect ghosts >4
+expect peak >30
+expect peak <990
+# every tape
+turn PRESET 1
+wav micro.wav
+wait 25000
+wavstop
+shot micro.png
+turn PRESET 1
+wav vhs.wav
+wait 25000
+wavstop
+turn PRESET 1
+wav reel.wav
+wait 25000
+wavstop
+shot reel.png
+expect type 3
+# a ruined cassette: AGE all the way up
+turn PRESET -3
+turn K1 40
+expect age 100
+wav ruined.wav
+wait 60000
+wavstop
+shot ruined.png
+expect drops >3
+expect peak <990
+turn K1 -35
+# the other scenes
+turn ALGO 1
+wav sunroom.wav
+wait 30000
+wavstop
+turn ALGO 1
+wait 5000
+turn ALGO 1
+wait 5000
+expect scene 3
+# the second page: the nature alone
+turn SELECT 1
+turn K1 -40
+turn K2 -40
+turn K3 -40
+turn K4 40
+wav nature.wav
+wait 20000
+wavstop
+shot page2.png
+# stop: the music fades, the hiss stays
+tap PLAY
+wait 8000
+expect playing 0
+# the wear: it counted, and the flash has it after the stop
+expect wear_s >240
+tap SAVE
+wait 30
+expect dirty 0
+reboot
+wait 600
+expect playing 0
+expect scene 3
+expect wear_s >240
+# HOME held: a new tape
+press HOME
+wait 2200
+release HOME
+wait 100
+expect wear_s 0
+reboot
+wait 600
+expect wear_s 0

@@ -1,35 +1,109 @@
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 Seth Graves; built on fm1-base by Charles Vestal */
-/* TAPE PROBE: the app. It runs dsp/probe.c and shows what it costs.
+/* TAPE: the app. The engine (dsp/tape.c), its few controls, and the tape's own wear, kept between sessions.
  *
- *   PLAY        the loop on / off (on: it records one pass of the pad, then only plays and wears)
- *   HOME        a fresh loop, and the peaks cleared
- *   PRESET      WEAR, 0..100: how fast the damage grows
- *   K1 RATE     the loop's rate: 22.05, 14.7 or 11.025 kHz (the screen shows how many seconds that holds)
- *   K2 FFT      the spectral layer: OFF, 256, 512 or 1024 points
- *   K3 OVERLAP  2x or 4x (4x: twice the frames)
- *   K4 CHANNELS MONO (one FFT, copied) or STEREO (two)
+ *   PLAY        the music on / off (it fades; the tape keeps running, so the hiss stays)
+ *   PRESET      the tape: CASSETTE, MICROCASSETTE, VHS, REEL TO REEL
+ *   ALGORITHM   the scene: GLIDE, SUNROOM, MEMORY, RIVER
+ *   K1 AGE      new .. ruined: wow, flutter, hiss, dull highs, dropouts, drag, print-through, all at once
+ *   K2 DENSITY  how many notes                  K3 SPACE   the room           K4 DRIVE   how hard it hits the tape
+ *   SELECT      the second page: K1 PADS, K2 BELLS, K3 FLUTE, K4 NATURE (levels)
+ *   HOME (hold) the tape's wear back to new
+ *   SAVE        keeps the settings for the next power-on
  *   MASTER      volume
  *
- * The screen: CPU now and its peak since the last change, the longest render against the 5.8 ms a block has,
- * xruns, the loop's length and passes, and the tape gauge (the damage map along the loop, the head on it).
+ * Wear: the tape wears as it plays, and it remembers. Every hour of playing ages it a little more, on top of AGE,
+ * up to +40 after ten hours; it is written to the flash every ten minutes of play and when the music stops.
+ *
  * Part of the unity build (device/unity.c, host/plat_host.c), after the platform: gfx.c and announce.c are in scope. */
 #include "fastmath.h"
-#include "probe.h"
+#include "tape.h"
 
-static struct {
-    char msg[2][28];
-    uint32_t msg_until;
-    uint32_t btn;
-    uint32_t peak, peak_from;            /* CPU's peak, counted from peak_from (ms) on: a change settles first */
-    uint8_t redraw;
-} ui;
+#define SET_MAGIC 0x54505631u            /* "TPV1" */
+enum { K_AGE, K_DENSITY, K_SPACE, K_DRIVE, K_PADS, K_BELLS, K_FLUTE, K_NATURE, NK };
+typedef struct {
+    uint32_t magic;
+    uint8_t playing, type, scene, rsv;
+    int8_t k[NK];                        /* 0..100 each */
+} settings_t;
+static settings_t set;
+static uint8_t set_dirty;
 
-static const uint8_t DIVS[3] = {2, 3, 4};
-static const uint16_t FFTS[4] = {0, 256, 512, 1024};
-static int8_t k_rate = 1, k_fft = 2, k_ov = 1, k_ch = 1;
+#define WEAR_MAGIC 0x57454152u           /* "WEAR" */
+typedef struct {
+    uint32_t magic;
+    uint32_t seconds;                    /* played, all told */
+} wear_t;
+static wear_t wear;
+static uint32_t wear_saved;              /* the seconds the flash has */
 
-void app_init(void) { pr_init(); }
+static const int8_t K_DEF[NK] = {30, 50, 50, 40, 80, 60, 40, 30};
+static const char *const KNOB_NAME[NK] = {"AGE", "DENSITY", "SPACE", "DRIVE", "PADS", "BELLS", "FLUTE", "NATURE"};
+
+static void settings_defaults(void)
+{
+    int i;
+    set.magic = SET_MAGIC;
+    set.playing = 1;
+    set.type = TP_CASSETTE;
+    set.scene = 0;
+    for (i = 0; i < NK; i++)
+        set.k[i] = K_DEF[i];
+}
+
+static int settings_ok(void)
+{
+    int i;
+    if (set.magic != SET_MAGIC || set.playing > 1u || set.type >= TP_NTYPES || set.scene >= TP_NSCENES)
+        return 0;
+    for (i = 0; i < NK; i++)
+        if (set.k[i] < 0 || set.k[i] > 100)
+            return 0;
+    return 1;
+}
+
+/* the wear's share of the age: +0.4 at ten hours, most of it early (a square root), none past */
+static float wear_age(void)
+{
+    float h = (float)wear.seconds * (1.0f / 3600.0f);
+    return 0.4f * fm_sqrtf(fm_minf(h * 0.1f, 1.0f));
+}
+
+static int wear_pct(void) { return (int)(wear_age() * 100.0f + 0.5f); }
+
+static void wear_save(void)
+{
+    if (wear.seconds != wear_saved && plat_store_save(OBJ_WEAR, &wear, sizeof wear) == 0)
+        wear_saved = wear.seconds;
+}
+
+static void engine_push(void)
+{
+    tp_cfg.playing = set.playing;
+    tp_cfg.type = set.type;
+    tp_cfg.scene = set.scene;
+    tp_cfg.age = fm_clampf((float)set.k[K_AGE] * 0.01f + wear_age(), 0.0f, 1.0f);
+    tp_cfg.density = (float)set.k[K_DENSITY] * 0.01f;
+    tp_cfg.space = (float)set.k[K_SPACE] * 0.01f;
+    tp_cfg.drive = (float)set.k[K_DRIVE] * 0.01f;
+    tp_cfg.pads = (float)set.k[K_PADS] * 0.01f;
+    tp_cfg.bells = (float)set.k[K_BELLS] * 0.01f;
+    tp_cfg.flute = (float)set.k[K_FLUTE] * 0.01f;
+    tp_cfg.nature = (float)set.k[K_NATURE] * 0.01f;
+}
+
+void app_init(void)
+{
+    if (plat_store_load(OBJ_SETTINGS, &set, sizeof set) != (int)sizeof set || !settings_ok())
+        settings_defaults();
+    if (plat_store_load(OBJ_WEAR, &wear, sizeof wear) != (int)sizeof wear || wear.magic != WEAR_MAGIC) {
+        wear.magic = WEAR_MAGIC;
+        wear.seconds = 0;
+    }
+    wear_saved = wear.seconds;
+    engine_push();
+    tp_init();
+}
 
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
@@ -37,12 +111,21 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     int port;
     while (plat_midi_in(&pkt, &port))
         ;
-    pr_render(lr, n, (float)master_q12 * (1.0f / 4096.0f));
+    tp_render(lr, n, (float)master_q12 * (1.0f / 4096.0f));
 }
 
-void app_panic(void) { pr_panic(); }
+void app_panic(void) { tp_panic(); }
 
 /* ------------------------------------------------------------------ text --- */
+static struct {
+    char msg[2][28];
+    uint32_t msg_until;
+    uint32_t btn;
+    uint32_t home_t;                     /* HOME went down (0: not held, or its hold already acted) */
+    uint32_t sec_t;                      /* the last second of play counted */
+    uint8_t page, redraw;
+} ui;
+
 static void text_cat(char *d, const char *s)
 {
     while (*d)
@@ -65,17 +148,6 @@ static void int_text(int32_t v, char *b)
     while (n)
         *b++ = t[--n];
     *b = 0;
-}
-
-static void tenths_text(float v, char *b)        /* "17.8" */
-{
-    int32_t t = (int32_t)(v * 10.0f + 0.5f);
-    char d[4];
-    int_text(t / 10, b);
-    text_cat(b, ".");
-    d[0] = (char)('0' + t % 10);
-    d[1] = 0;
-    text_cat(b, d);
 }
 
 void app_say(const char *a, const char *b)
@@ -101,101 +173,134 @@ void app_say(const char *a, const char *b)
     }
 }
 
-/* ---------------------------------------------------------------- knobs --- */
-static const char *const KNOB_NAME[4] = {"RATE", "FFT", "OVERLAP", "CHANNELS"};
-
-static void knob_text(int k, char *t)
-{
-    static const char *const RATE[3] = {"22K", "14.7K", "11K"};
-    t[0] = 0;
-    if (k == 0)
-        text_cat(t, RATE[k_rate]);
-    else if (k == 1) {
-        if (k_fft)
-            int_text(FFTS[k_fft], t);
-        else
-            text_cat(t, "OFF");
-    } else if (k == 2)
-        text_cat(t, k_ov ? "4X" : "2X");
-    else
-        text_cat(t, k_ch ? "STEREO" : "MONO");
-}
-
-static void changed(void)                /* the engine's settings, and the peak counted again a second later */
-{
-    pr_cfg.loop_div = DIVS[k_rate];
-    pr_cfg.fft_n = FFTS[k_fft];
-    pr_cfg.overlap = k_ov ? 4u : 2u;
-    pr_cfg.stereo = (uint8_t)k_ch;
-    ui.peak = 0;
-    ui.peak_from = plat_ms() + 1000u;
-    pr_render_us_max = 0;
-}
-
+/* ---------------------------------------------------------------- input --- */
 static void knob_turn(int k, int32_t e)
 {
-    char t[16];
-    int8_t *v = k == 0 ? &k_rate : k == 1 ? &k_fft : k == 2 ? &k_ov : &k_ch;
-    int32_t hi = k == 0 ? 2 : k == 1 ? 3 : 1;
-    *v = (int8_t)clamp(*v + e, 0, hi);
-    if (k == 0)
-        pr_loop_reset();                 /* a new rate is a new tape */
-    changed();
-    knob_text(k, t);
+    char t[12];
+    int32_t v = clamp((int32_t)set.k[k] + 2 * e, 0, 100);
+    if (v != set.k[k]) {
+        set.k[k] = (int8_t)v;
+        set_dirty = 1;
+        engine_push();
+    }
+    int_text(set.k[k], t);
     app_say(KNOB_NAME[k], t);
+}
+
+static void wear_reset(void)
+{
+    wear.seconds = 0;
+    wear_save();
+    engine_push();
+    app_say("WEAR", "NEW TAPE");
 }
 
 static void input(void)
 {
-    uint32_t btn = plat_buttons(), k;
+    uint32_t btn = plat_buttons(), k, now = plat_ms();
     int32_t e;
-    char t[12];
     for (k = 0; k < NB; k++) {
         uint32_t bit = 1u << k;
         if (!(btn & bit) || (ui.btn & bit))
             continue;
         if (k == B_PLAY) {
-            pr_cfg.loop_on = (uint8_t)!pr_cfg.loop_on;
-            changed();
-            app_say("LOOP", pr_cfg.loop_on ? "ON" : "OFF");
+            set.playing = (uint8_t)!set.playing;
+            set_dirty = 1;
+            engine_push();
+            if (!set.playing)
+                wear_save();
+            app_say(set.playing ? "PLAY" : "STOP", "");
+        } else if (k == B_SAVE) {
+            if (plat_store_save(OBJ_SETTINGS, &set, sizeof set) == 0) {
+                set_dirty = 0;
+                wear_save();
+                app_say("SAVED", "");
+            } else {
+                app_say("SAVE", "FAILED");
+            }
         } else if (k == B_HOME) {
-            pr_loop_reset();
-            changed();
-            app_say("FRESH LOOP", "");
+            ui.home_t = now | 1u;
+            app_say("HOLD HOME", "TO RESET WEAR");
         }
     }
+    if (ui.home_t && !(btn & (1u << B_HOME)))
+        ui.home_t = 0;
+    else if (ui.home_t && now - ui.home_t >= 2000u) {
+        ui.home_t = 0;
+        wear_reset();
+    }
     if ((e = plat_enc(EN_PRESET)) != 0) {
-        pr_cfg.wear = (uint8_t)clamp((int32_t)pr_cfg.wear + e * 5, 0, 100);
-        int_text(pr_cfg.wear, t);
-        app_say("WEAR", t);
+        int32_t p = clamp((int32_t)set.type + e, 0, TP_NTYPES - 1);
+        if (p != set.type) {
+            set.type = (uint8_t)p;
+            set_dirty = 1;
+            engine_push();
+        }
+        app_say(TP_TYPE_NAME[set.type], "");
+    }
+    if ((e = plat_enc(EN_ALGO)) != 0) {
+        int32_t p = clamp((int32_t)set.scene + e, 0, TP_NSCENES - 1);
+        if (p != set.scene) {
+            set.scene = (uint8_t)p;
+            set_dirty = 1;
+            engine_push();
+        }
+        app_say(TP_SCENE_NAME[set.scene], "");
+    }
+    if ((e = plat_enc(EN_SELECT)) != 0) {
+        ui.page = (uint8_t)(e > 0);
+        app_say(ui.page ? "PAGE 2" : "PAGE 1", "");
     }
     if ((e = plat_enc(EN_K1)) != 0)
-        knob_turn(0, e);
+        knob_turn(ui.page * 4 + 0, e);
     if ((e = plat_enc(EN_K2)) != 0)
-        knob_turn(1, e);
+        knob_turn(ui.page * 4 + 1, e);
     if ((e = plat_enc(EN_K3)) != 0)
-        knob_turn(2, e);
+        knob_turn(ui.page * 4 + 2, e);
     if ((e = plat_enc(EN_K4)) != 0)
-        knob_turn(3, e);
-    (void)plat_enc(EN_SELECT);
-    (void)plat_enc(EN_ALGO);
+        knob_turn(ui.page * 4 + 3, e);
+    if (btn != ui.btn)
+        ui.redraw = 1;
     ui.btn = btn;
     plat_glow(1);
-    plat_leds(pr_cfg.loop_on ? 1u << B_PLAY : 0u, 0);
+    plat_leds((set.playing ? 1u << B_PLAY : 0u) | (set_dirty ? 1u << B_SAVE : 0u), 0);
 }
 
 void app_input_only(void) { input(); }
 
+/* the wear: a second of play is a second of wear; to the flash every ten minutes of it */
+static void wear_tick(void)
+{
+    uint32_t now = plat_ms();
+    if (!ui.sec_t)
+        ui.sec_t = now;
+    while (now - ui.sec_t >= 1000u) {
+        ui.sec_t += 1000u;
+        if (set.playing) {
+            float before = wear_age();
+            wear.seconds++;
+            if (wear_age() - before > 0.0f)
+                engine_push();
+            if (wear.seconds - wear_saved >= 600u)
+                wear_save();
+        }
+    }
+}
+
 static void speak(void)
 {
-    char t[80], n[12];
+    char t[96], n[12];
     if (ann_on() && ann_where()) {
         t[0] = 0;
-        text_cat(t, "TAPE PROBE. CPU ");
-        int_text((int32_t)plat_cpu_pct(), n);
+        text_cat(t, "TAPE. ");
+        text_cat(t, TP_TYPE_NAME[set.type]);
+        text_cat(t, ". ");
+        text_cat(t, TP_SCENE_NAME[set.scene]);
+        text_cat(t, ". AGE ");
+        int_text(set.k[K_AGE], n);
         text_cat(t, n);
-        text_cat(t, ". PEAK ");
-        int_text((int32_t)ui.peak, n);
+        text_cat(t, ". WEAR ");
+        int_text(wear_pct(), n);
         text_cat(t, n);
         ann_say(t, 0, ANN_NOW);
     }
@@ -203,83 +308,115 @@ static void speak(void)
 }
 
 /* --------------------------------------------------------------- screen --- */
-/* worn tape: a brown-amber palette, the platform's five steps (gfx.c) */
-static const uint16_t TPAL[5] = {RGB(52, 40, 30), RGB(110, 88, 66), RGB(190, 170, 146), RGB(220, 170, 110),
-                                 RGB(255, 196, 110)};
+/* warm browns and amber, as old tape and its label */
+static const uint16_t TPAL[5] = {RGB(58, 44, 34), RGB(116, 92, 70), RGB(196, 174, 150), RGB(226, 176, 112),
+                                 RGB(255, 200, 120)};
 
-static void row(int32_t y, const char *label, const char *val, uint16_t c)
+static void circle(int32_t cx, int32_t cy, int32_t r, uint16_t c)
 {
-    cv_text(10, y, &FONT_XS, label, C_GRAY);
-    cv_text(96, y - 2, &FONT_B, val, c);
+    int32_t x = r, y = 0, err = 1 - r;
+    while (x >= y) {
+        cv_pset(cx + x, cy + y, c);
+        cv_pset(cx + y, cy + x, c);
+        cv_pset(cx - y, cy + x, c);
+        cv_pset(cx - x, cy + y, c);
+        cv_pset(cx - x, cy - y, c);
+        cv_pset(cx - y, cy - x, c);
+        cv_pset(cx + y, cy - x, c);
+        cv_pset(cx + x, cy - y, c);
+        y++;
+        if (err < 0) {
+            err += 2 * y + 1;
+        } else {
+            x--;
+            err += 2 * (y - x) + 1;
+        }
+    }
+}
+
+static void disc(int32_t cx, int32_t cy, int32_t r, uint16_t c)
+{
+    int32_t y;
+    for (y = -r; y <= r; y++) {
+        int32_t w = (int32_t)fm_sqrtf((float)(r * r - y * y));
+        cv_rect(cx - w, cy + y, 2 * w + 1, 1, c);
+    }
+}
+
+/* a reel: its pack of tape, the hub, three spokes turned to a */
+static void reel(int32_t cx, int32_t cy, int32_t pack, float a)
+{
+    int32_t i;
+    disc(cx, cy, pack, C_LINE);
+    circle(cx, cy, pack, C_DIM);
+    disc(cx, cy, 12, C_BLACK);
+    circle(cx, cy, 12, C_GRAY);
+    for (i = 0; i < 3; i++) {
+        float t = a + (float)i * (1.0f / 3.0f);
+        int32_t x = (int32_t)(10.0f * fm_cosf(t * 6.2831853f)), y = (int32_t)(10.0f * fm_sinf(t * 6.2831853f));
+        cv_line(cx + x / 3, cy + y / 3, cx + x, cy + y, C_HI);
+    }
 }
 
 static void draw(void)
 {
-    char t[32], n[12];
+    char t[40], n[12];
     int32_t i, x;
-    uint32_t now = plat_ms(), us = pr_render_us_max, pct = plat_cpu_pct();
-    float secs = pr_loop_seconds();
+    uint32_t now = plat_ms();
+    float turns = tp_reel_turns, drop = tp_drop;
+    int big = set.type == TP_REEL, small = set.type == TP_MICRO;
 
     cv_begin(240, 30, C_BLACK);
     if (now < ui.msg_until) {
         x = cv_text(8, 6, &FONT_B, ui.msg[0], C_WHITE);
         cv_text(x + 8, 6, &FONT_B, ui.msg[1], C_HI);
     } else {
-        cv_text(8, 6, &FONT_B, APP_NAME, C_WHITE);
-        cv_text(232 - text_w(&FONT_XS, pr_cfg.loop_on ? "LOOP ON" : "LOOP OFF"), 9, &FONT_XS,
-                pr_cfg.loop_on ? "LOOP ON" : "LOOP OFF", pr_cfg.loop_on ? C_HI : C_DIM);
+        cv_text(8, 6, &FONT_B, "TAPE", C_WHITE);
+        cv_text(232 - text_w(&FONT_XS, TP_TYPE_NAME[set.type]), 9, &FONT_XS, TP_TYPE_NAME[set.type], C_AMB);
     }
     cv_blit(0, 0);
 
-    cv_begin(240, 158, C_BLACK);
-    int_text((int32_t)pct, t);
-    text_cat(t, "%");
-    row(4, "CPU", t, C_HI);
-    int_text((int32_t)ui.peak, t);
-    text_cat(t, "%");
-    row(24, "PEAK", t, ui.peak > 80u ? C_WHITE : C_HI);
-    int_text((int32_t)us, t);
-    text_cat(t, " US / 5805");
-    row(44, "LONGEST BLOCK", t, us > 5000u ? C_WHITE : C_AMB);
-    int_text((int32_t)plat_xruns(), t);
-    row(64, "XRUNS", t, C_AMB);
-    tenths_text(secs, t);
-    text_cat(t, " S   ");
-    int_text((int32_t)pr_passes, n);
-    text_cat(t, n);
-    text_cat(t, " PASSES");
-    row(84, "LOOP", t, C_AMB);
-    int_text(pr_cfg.wear, t);
-    row(104, "WEAR", t, C_AMB);
-    /* the tape gauge: the damage along the loop, 1024 cells in 220 columns, the worst of each; the head a line */
+    /* the tape: a shell (or two open reels), the reels turning with the transport's wobble */
+    cv_begin(240, 156, C_BLACK);
     {
-        int32_t gx = 10, gy = 128, gw = 220, gh = 18, head;
-        cv_rect(gx - 1, gy - 1, gw + 2, gh + 2, C_LINE);   /* the tape: an outline, dark inside */
-        cv_rect(gx, gy, gw, gh, C_BLACK);
-        for (i = 0; i < gw; i++) {
-            uint32_t a = (uint32_t)i * PR_NSEG / (uint32_t)gw, b = (uint32_t)(i + 1) * PR_NSEG / (uint32_t)gw, d = 0;
-            for (; a < b; a++)
-                if (pr_damage[a] > d)
-                    d = pr_damage[a];
-            if (d) {
-                int32_t h = 3 + (int32_t)(d * (uint32_t)(gh - 4) / 255u);   /* any damage at all shows */
-                cv_rect(gx + i, gy + gh - 1 - h, 1, h, d > 150u ? C_WHITE : C_AMB);
-            }
+        int32_t cy = 58, sep = big ? 112 : small ? 64 : 84, pack = big ? 46 : small ? 22 : 30,
+                lx = 120 - sep / 2, rx = 120 + sep / 2;
+        float fill = 0.5f + 0.5f * fm_sin_turns(turns * 0.002f);   /* the tape winding from one side to the other */
+        int32_t pl = 13 + (int32_t)((float)(pack - 13) * fill), pr = 13 + (int32_t)((float)(pack - 13) * (1.0f - fill));
+        if (!big) {
+            int32_t w = sep + 2 * pack + 24, h = 2 * pack + 36;
+            cv_rect(120 - w / 2, cy - pack - 18, w, h, C_LINE);
+            cv_rect(120 - w / 2 + 2, cy - pack - 16, w - 4, h - 4, C_BLACK);
+            cv_rect(120 - w / 2 + 10, cy - pack - 12, w - 20, 10, C_AMB);    /* the label */
         }
-        head = gx + (int32_t)(pr_head() * (uint32_t)gw / PR_LOOP_BYTES);
-        cv_rect(head, gy - 3, 1, gh + 6, C_HI);
+        reel(lx, cy, pl, turns);
+        reel(rx, cy, pr, turns);
+        cv_line(lx, cy + pl, rx, cy + pr, drop > 0.2f ? C_DIM : C_GRAY);   /* the tape between them */
+        if (drop > 0.2f)
+            cv_rect(118, cy + (pl + pr) / 2 - 3, 4, 6, C_WHITE);             /* a dropout, as it passes */
     }
-    cv_blit(0, 32);
+    cv_text(120 - text_w(&FONT_B, TP_SCENE_NAME[set.scene]) / 2, 114, &FONT_B, TP_SCENE_NAME[set.scene], C_HI);
+    t[0] = 0;
+    text_cat(t, "WEAR ");
+    int_text(wear_pct(), n);
+    text_cat(t, n);
+    if (!set.playing)
+        text_cat(t, "   STOPPED");
+    cv_text(120 - text_w(&FONT_XS, t) / 2, 136, &FONT_XS, t, C_GRAY);
+    cv_blit(0, 30);
 
-    cv_begin(240, 50, C_BLACK);
+    cv_begin(240, 52, C_BLACK);
     cv_rect(0, 0, 240, 1, C_LINE);
     for (i = 0; i < 4; i++) {
-        x = 4 + i * 59;
-        knob_text(i, t);
-        cv_text(x, 8, &FONT_XS, KNOB_NAME[i], C_GRAY);
+        int32_t k = ui.page * 4 + i;
+        x = 4 + i * 57;
+        int_text(set.k[k], t);
+        cv_text(x, 8, &FONT_XS, KNOB_NAME[k], C_GRAY);
         cv_text(x, 24, &FONT_B, t, C_HI);
     }
-    cv_blit(0, 190);
+    cv_rect(226, 12, 6, 6, ui.page ? C_LINE : C_GRAY);
+    cv_rect(226, 26, 6, 6, ui.page ? C_GRAY : C_LINE);
+    cv_blit(0, 188);
 }
 
 void app_ui_init(void)
@@ -288,23 +425,21 @@ void app_ui_init(void)
     for (k = 0; k < 5; k++)
         pal[k] = TPAL[k];
     lcd_fill(0, 0, 240, 240, C_BLACK);
-    changed();
     ui.redraw = 1;
 }
 
 void app_frame(void)
 {
     static uint32_t last_draw;
-    uint32_t now = plat_ms(), pct = plat_cpu_pct();
+    uint32_t now = plat_ms();
     input();
+    wear_tick();
     speak();
-    if ((int32_t)(now - ui.peak_from) >= 0 && pct > ui.peak)
-        ui.peak = pct;
     if (ui.msg_until && now >= ui.msg_until) {
         ui.msg_until = 0;
         ui.redraw = 1;
     }
-    if (now - last_draw >= 250u)
+    if (now - last_draw >= 50u)          /* the reels turn */
         ui.redraw = 1;
     if (ui.redraw) {
         ui.redraw = 0;
@@ -316,21 +451,33 @@ void app_frame(void)
 #ifdef PLAT_HOST
 int app_expect(const char *what, int *got)
 {
-    uint32_t i, s = 0;
-    if (!strcmp(what, "loop_on"))
-        *got = pr_cfg.loop_on;
-    else if (!strcmp(what, "fft"))
-        *got = pr_cfg.fft_n;
-    else if (!strcmp(what, "passes"))
-        *got = (int)pr_passes;
-    else if (!strcmp(what, "frames"))
-        *got = (int)pr_frames;
-    else if (!strcmp(what, "loop_ms"))
-        *got = (int)(pr_loop_seconds() * 1000.0f);
-    else if (!strcmp(what, "damage")) {      /* the damage map's sum */
-        for (i = 0; i < PR_NSEG; i++)
-            s += pr_damage[i];
-        *got = (int)s;
+    if (!strcmp(what, "playing"))
+        *got = set.playing;
+    else if (!strcmp(what, "type"))
+        *got = set.type;
+    else if (!strcmp(what, "scene"))
+        *got = set.scene;
+    else if (!strcmp(what, "age"))
+        *got = set.k[K_AGE];
+    else if (!strcmp(what, "wear_s"))
+        *got = (int)wear.seconds;
+    else if (!strcmp(what, "wear_pct"))
+        *got = wear_pct();
+    else if (!strcmp(what, "dirty"))
+        *got = set_dirty;
+    else if (!strcmp(what, "notes"))
+        *got = (int)tp_notes;
+    else if (!strcmp(what, "ghosts"))
+        *got = (int)tp_ghosts;
+    else if (!strcmp(what, "drops"))
+        *got = (int)tp_drops;
+    else if (!strcmp(what, "drags"))
+        *got = (int)tp_drags;
+    else if (!strcmp(what, "chord"))
+        *got = tp_chord;
+    else if (!strcmp(what, "peak")) {    /* the output's peak since last read, thousandths */
+        *got = (int)(tp_peak * 1000.0f);
+        tp_peak = 0.0f;
     } else
         return 0;
     return 1;

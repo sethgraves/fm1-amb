@@ -34,5 +34,5 @@ jobs:
         set -euo pipefail
         python3 base/tools/build.py tape --host
         mkdir -p build/host-run
-        tape/build/host/tape_host tape/tests/probe.txt build/host-run
+        tape/build/host/tape_host tape/tests/basic.txt build/host-run
       packages: build/out/*

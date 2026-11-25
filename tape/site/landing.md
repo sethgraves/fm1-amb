@@ -1,1 +1,1 @@
-A test build: loop memory and spectral CPU on the FM-1.
+A generative ambient machine that only exists on tape.

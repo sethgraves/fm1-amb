@@ -1,29 +1,50 @@
 # TAPE (working name)
 
 A generative ambient machine for the M-VAVE FM-1 about memory and media wearing out, in the spirit of
-Matthewdavid's *Trust the Guide and Glide*. Tape is part of the instrument, not an effect on it.
+Matthewdavid's *Trust the Guide and Glide*. There is no clean signal and no bypass: the music is made, put through a
+room, recorded onto a tape and played back, and the tape is part of the instrument.
 
-This folder is the **probe build**: it measures the two riskiest parts on the FM-1 before the instrument is built
-on them.
+**The music.** Warm pads of detuned saws that glide from chord to chord, soft FM bells arpeggiating the chord, a
+breathy flute that plays a short phrase now and then, and a stream with drops and birds. Four scenes, each a key and
+a slow progression: GLIDE (D lydian), SUNROOM (F major), MEMORY (A dorian), RIVER (Eb pentatonic). The flute and
+the nature are synthesised, not samples.
+
+**The tape.** Saturation and head bump on the way in. Wow, flutter, motor drag and head misalignment in the
+transport. Dull highs, dropouts, hiss and channels that wander on the way out. Print-through: faint ghosts of the
+bells and flute a tape-wrap before and after them (the machine plans its notes ahead, so a ghost can come first).
 
 | Control | What it does |
 | --- | --- |
-| PLAY | The loop on / off (records one pass of a test pad, then only plays and wears it) |
-| HOME | A fresh loop; the peaks cleared |
-| PRESET | WEAR, how fast the damage grows |
-| K1 RATE | The loop's rate: 22K, 14.7K, 11K (the screen shows how many seconds fit) |
-| K2 FFT | The spectral layer: OFF, 256, 512, 1024 |
-| K3 OVERLAP | 2X or 4X |
-| K4 CHANNELS | MONO or STEREO |
+| PLAY | The music on / off (it fades; the tape keeps running, so the hiss stays) |
+| PRESET | The tape: CASSETTE, MICROCASSETTE, VHS, REEL TO REEL |
+| ALGORITHM | The scene |
+| K1 AGE | New to ruined: everything about the tape at once |
+| K2 DENSITY | How many notes |
+| K3 SPACE | The room |
+| K4 DRIVE | How hard the music hits the tape |
+| SELECT | Page 2: K1 PADS, K2 BELLS, K3 FLUTE, K4 NATURE (levels) |
+| HOME (hold 2 s) | The tape's wear back to new |
+| SAVE | Keeps the settings for the next power-on |
+| MASTER | Volume |
 
-The screen: CPU now and its peak (counted from a second after the last change), the longest audio block against
-the 5805 µs it has, xruns (dropouts: should stay 0), the loop's length and passes, and the tape gauge.
+**Wear.** The tape wears as it plays, and remembers. Each hour of playing ages it a little more on top of AGE, up
+to +40 after ten hours, most of it early. It is written to the flash every ten minutes of play and when the music
+stops, and shown under the scene as WEAR.
+
+| Tape | Character |
+| --- | --- |
+| Cassette | The middle: some wobble, some hiss, highs go with age |
+| Microcassette | Thin (no lows), wobbly, mono, hissy, dull |
+| VHS | The linear audio track: slow wobble, dull, near mono, tracking dropouts |
+| Reel to reel | Wide, steady, quiet, warm head bump, the strongest print-through |
+
+About a quarter of the FM-1's audio time, measured against the probe build's readings on the device.
 
 ## Build
 
 ```
 python3 base/tools/build.py tape --host                     # the simulator
-tape/build/host/tape_host tape/tests/probe.txt OUTDIR        # WAVs and screenshots in OUTDIR
+tape/build/host/tape_host tape/tests/basic.txt OUTDIR        # WAVs and screenshots in OUTDIR
 python3 base/tools/build.py tape                             # tape/build/tape.fwsc
 ```
 

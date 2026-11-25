@@ -1,18 +1,25 @@
 # SPDX-License-Identifier: MPL-2.0
 # TAPE's words for a screen reader (fm1-reader): the text on the screen <TAB> what to say.
-# url: https://sethgraves.github.io/fm1-amb/words/
-TAPE PROBE	tape probe
-CPU	C P U
-PEAK	peak
-RATE	rate
-FFT	F F T
-OVERLAP	overlap
-CHANNELS	channels
+# url: https://sethgraves.github.io/fm1-dream/words/
+TAPE	tape
+CASSETTE	cassette
+MICROCASSETTE	microcassette
+VHS	V H S
+REEL TO REEL	reel to reel
+GLIDE	glide
+SUNROOM	sunroom
+MEMORY	memory
+RIVER	river
+AGE	age
+DENSITY	density
+SPACE	space
+DRIVE	drive
+PADS	pads
+BELLS	bells
+FLUTE	flute
+NATURE	nature
 WEAR	wear
-LOOP	loop
-PASSES	passes
-MONO	mono
-STEREO	stereo
-OFF	off
-ON	on
-FRESH LOOP	fresh loop
+NEW TAPE	new tape
+HOLD HOME	hold home
+TO RESET WEAR	to reset wear
+STOPPED	stopped

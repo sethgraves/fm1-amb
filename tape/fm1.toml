@@ -1,5 +1,4 @@
-# TAPE's build settings (fm1-base tools/build.py). This is the probe build: it measures the loop's memory and the
-# spectral layer's CPU on the FM-1 before the instrument is built on them.
+# TAPE's build settings (fm1-base tools/build.py)
 name = "TAPE"                  # APP_NAME is in app.h; this names the build's files
 id_prefix = "FM-1_48"          # package identity: dev FM-1_4800, releases FM-1_48XXYYZZ
 usb_manufacturer = "TAPE"
@@ -7,17 +6,17 @@ usb_product = "TAPE FM-1"
 ble = false                    # no radio
 ram_layout = "packed"          # one SRAM budget: the build reports exactly what the loop leaves free
 include = ["dsp"]
-o2 = ["dsp/probe.c"]           # the engine, at -O2
+o2 = ["dsp/tape.c"]           # the engine, at -O2
 words = "words.tsv"
 # the site
-tagline = "Probe build: loop memory and spectral CPU on the FM-1."
-repo = "https://github.com/sethgraves/fm1-amb"
+tagline = "A generative ambient machine that only exists on tape."
+repo = "https://github.com/sethgraves/fm1-dream"
 licence = "MPL-2.0"
 credits = "Built on fm1-base by Charles Vestal and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
 # firmware.json
 author = "Seth Graves"
-description = "A test build for a generative tape machine: it records a loop and wears it a little more every pass, and runs a short-time FFT with codec-style damage, showing what each costs."
-tags = ["utility"]
-install = "https://github.com/sethgraves/fm1-amb"
-site = "https://github.com/sethgraves/fm1-amb"
-screenshot = "docs/img/screen-probe.png"
+description = "Warm pads, soft bells, a breathy flute and a stream, played through a tape that is part of the instrument: wow, flutter, saturation, hiss, dull highs, dropouts, motor drag, head misalignment and print-through. Four tape types, one AGE knob, and a tape that wears as you play it and remembers."
+tags = ["ambient", "generative"]
+install = "https://github.com/sethgraves/fm1-dream"
+site = "https://github.com/sethgraves/fm1-dream"
+screenshot = "docs/img/screen-playing.png"
