@@ -33,3 +33,13 @@ expect dirty 0
 reboot
 wait 600
 expect playing 1
+# the Dream House: 18 tones
+turn PRESET 1
+wait 600
+expect piece 1
+wait 15000
+shot dreamhouse.png
+expect level3 >40
+wav dreamhouse.wav
+wait 30000
+wavstop

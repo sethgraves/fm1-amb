@@ -19,14 +19,24 @@ typedef struct {
     const char *name;                    /* on the screen (capitals) */
     float unit_hz;
     uint8_t n;
-    uint16_t harm[DR_MAXT];
+    uint8_t nbase;                       /* the first nbase harmonics are the base, under the rest */
+    uint16_t harm[DR_MAXT];              /* rising */
 } piece_t;
 
 #define B3_HZ 246.941651f                /* B below middle C, A = 440 */
 static const piece_t PIECES[] = {
     /* Composition 1960 #7: B and F#, "to be held for a long time". Here as a pure fifth: harmonics 2 and 3 of
      * a unit an octave under the B, so the F# sits 2 cents above equal temperament */
-    {"COMPOSITION 1960 #7", B3_HZ * 0.5f, 2, {2, 3}},
+    {"COMPOSITION 1960 #7", B3_HZ * 0.5f, 2, 0, {2, 3}},
+    /* The Base 9:7:4 Symmetry in Prime Time When Centered above and below The Lowest Term Primes in The Range 288
+     * to 224 with The Addition of 279 and 261 ... with The Addition of 119 (the Dream House), worked from its title:
+     *   above, to 288: the primes 128-144 (131, 137, 139) and 64-72 (67, 71) times powers of 2: 262 274 278 268 284
+     *   below, to 224: the primes 112-126 (113), 56-63 (59, 61) and 28-31.5 (29, 31) likewise: 226 236 244 232 248
+     *   with 288 and 224, the additions 279 and 261, and 2 x 119 = 238
+     * The base 9:7:4 as harmonics 16, 28, 36, two octaves under 36:28 = 9:7 = 288:224's own ratio.
+     * The unit 4.5 Hz puts the cluster at 1008 - 1296 Hz and the base at 72, 126, 162 Hz; PITCH moves it all. */
+    {"DREAM HOUSE 9:7:4", 4.5f, 18, 3,
+     {16, 28, 36, 224, 226, 232, 236, 238, 244, 248, 261, 262, 268, 274, 278, 279, 284, 288}},
 };
 #define NPIECES ((int)(sizeof PIECES / sizeof PIECES[0]))
 
@@ -90,7 +100,12 @@ static void drone_update(void)
         float a = fm_db2lin(db_oct * fm_log2f((float)p->harm[i] / (float)hmin));
         st.harm[i] = p->harm[i];
         st.amp[i] = a;
-        st.pan[i] = p->n > 1 ? s * (2.0f * (float)i / (float)(p->n - 1) - 1.0f) : 0.0f;
+        if (p->n <= 1)
+            st.pan[i] = 0.0f;
+        else if (p->n == 2)              /* the two at either side */
+            st.pan[i] = s * (2.0f * (float)i - 1.0f);
+        else                             /* neighbours on opposite sides, the higher further out */
+            st.pan[i] = s * ((i & 1) ? 1.0f : -1.0f) * (0.3f + 0.7f * (float)i / (float)(p->n - 1));
         sum += a;
     }
     for (i = 0; i < p->n; i++)           /* their sum 1: in phase, 0.9 of full scale at most */
@@ -341,6 +356,60 @@ static void draw_ratio(int32_t cy)
     cv_text(x + wa + 14, cy, &FONT_L, b, C_HI);
 }
 
+/* a piece of many tones: the cluster as lines along its harmonic numbers (each as tall as its level), the base
+ * as a row of notes under it. Drawn into the middle canvas (240 x 150), under the piece's name. */
+static void draw_cluster(float u)
+{
+    const piece_t *p = &PIECES[set.piece];
+    int32_t i, h0, h1, x, c;
+    char t[24], nm[8];
+    float amax = 1e-6f;
+    if (p->nbase >= p->n)
+        return;
+    h0 = p->harm[p->nbase];
+    h1 = p->harm[p->n - 1];
+    for (i = 0; i < p->n; i++)
+        amax = fm_maxf(amax, st.amp[i]);
+
+    /* "15 TONES 224 - 288", then the band in notes and Hz */
+    int_text(p->n - p->nbase, t, 0);
+    text_cat(t, " TONES  ");
+    int_text(h0, nm, 0);
+    text_cat(t, nm);
+    text_cat(t, " - ");
+    int_text(h1, nm, 0);
+    text_cat(t, nm);
+    cv_text(120 - text_w(&FONT_B, t) / 2, 18, &FONT_B, t, C_WHITE);
+    note_of(u * (float)h0, t, &c);
+    text_cat(t, " - ");
+    note_of(u * (float)h1, nm, &c);
+    text_cat(t, nm);
+    cv_text(120 - text_w(&FONT_XS, t) / 2, 38, &FONT_XS, t, C_GRAY);
+
+    /* the cluster: a line per tone, along its harmonic number */
+    cv_rect(10, 104, 220, 1, C_LINE);
+    for (i = p->nbase; i < p->n; i++) {
+        int32_t hgt = (int32_t)(fm_clampf(dr_level[i] / amax, 0.0f, 1.0f) * 50.0f + 0.5f);
+        x = 10 + (h1 > h0 ? (p->harm[i] - h0) * 218 / (h1 - h0) : 109);
+        cv_rect(x, 54, 2, 50, C_LINE);
+        if (hgt)
+            cv_rect(x, 104 - hgt, 2, hgt, C_HI);
+    }
+    int_text(h0, t, 0);
+    cv_text(10, 107, &FONT_XS, t, C_DIM);
+    int_text(h1, t, 0);
+    cv_text(230 - text_w(&FONT_XS, t), 107, &FONT_XS, t, C_DIM);
+
+    /* the base */
+    if (p->nbase) {
+        x = cv_text(10, 126, &FONT_XS, "BASE", C_GRAY) + 8;
+        for (i = 0; i < p->nbase && x < 220; i++) {
+            note_of(u * (float)p->harm[i], nm, &c);
+            x = cv_text(x, 126, &FONT_XS, nm, dr_level[i] > 0.5f * st.amp[i] ? C_WHITE : C_DIM) + 10;
+        }
+    }
+}
+
 static void draw(void)
 {
     const piece_t *p = &PIECES[set.piece];
@@ -355,7 +424,13 @@ static void draw(void)
         int32_t x = cv_text(8, 6, &FONT_B, ui.msg[0], C_WHITE);
         cv_text(x + 8, 6, &FONT_B, ui.msg[1], C_HI);
     } else {
-        cv_text(8, 6, &FONT_B, APP_NAME, C_WHITE);
+        int32_t x = cv_text(8, 6, &FONT_B, APP_NAME, C_WHITE);
+        t[0] = 0;                        /* the audio's share of the CPU: how many tones the chip can hold */
+        text_cat(t, "CPU ");
+        int_text((int32_t)plat_cpu_pct(), nm, 0);
+        text_cat(t, nm);
+        text_cat(t, "%");
+        cv_text(x + 12, 9, &FONT_XS, t, C_DIM);
         cv_text(232 - text_w(&FONT_XS, set.playing ? "PLAYING" : "STOPPED"), 9, &FONT_XS,
                 set.playing ? "PLAYING" : "STOPPED", set.playing ? C_HI : C_DIM);
     }
@@ -364,6 +439,11 @@ static void draw(void)
     /* the piece, the ratio, the tones */
     cv_begin(240, 150, C_BLACK);
     cv_text(120 - text_w(&FONT_XS, p->name) / 2, 2, &FONT_XS, p->name, C_GRAY);
+    if (p->n > 4) {
+        draw_cluster(u);
+        cv_blit(0, 34);
+        goto knobs;
+    }
     draw_ratio(22);
     for (i = 0, y = 66; i < p->n && y < 146; i++, y += 20) {
         int32_t c, bar;
@@ -384,7 +464,7 @@ static void draw(void)
     }
     cv_blit(0, 34);
 
-    /* the knobs */
+knobs:
     cv_begin(240, 50, C_BLACK);
     cv_rect(0, 0, 240, 1, C_LINE);
     for (i = 0; i < 4; i++) {
