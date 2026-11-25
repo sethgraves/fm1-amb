@@ -111,8 +111,14 @@ turn K4 -1
 wait 10000
 expect sounding 15
 turn SELECT -1
-# the Well-Tuned Piano tuning: 36 tones
+# a new piece starts the second page over
+turn SELECT 1
+turn K1 -10
+expect density 80
 turn PRESET 10
+expect density 100
+turn SELECT -1
+# the Well-Tuned Piano tuning: 36 tones
 wait 15000
 expect piece 6
 shot wtp.png

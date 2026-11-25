@@ -471,7 +471,11 @@ static void input(void)
         int32_t p = clamp((int32_t)set.piece + e, 0, NPIECES - 1);
         if (p != set.piece) {
             set.piece = (uint8_t)p;
-            set.drift = PIECES[p].drift;
+            set.drift = PIECES[p].drift;     /* the second page is the piece's own: a new piece starts it over */
+            set.density = 100;
+            set.balance = 0;
+            set.evolve = 0;
+            evolve_now = 1.0f;
             set_dirty = 1;
             drone_update();
         }
