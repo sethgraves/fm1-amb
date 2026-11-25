@@ -34,7 +34,13 @@ jobs:
           flags=(--prerelease=false)
           if [[ "$version" == *-* ]]; then flags=(--prerelease --latest=false); fi
           if draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft); then
-            [[ "$draft" == true ]] || { echo 'Refusing to rebuild a public release'; exit 1; }
+            if [[ "$draft" != true ]]; then
+              # a release just published from GitHub's page (which is how its tag was made) and still empty: back
+              # to a draft while its packages are built, signed and checked. One with packages is never rebuilt.
+              n=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets | length')
+              [[ "$n" == 0 ]] || { echo 'Refusing to rebuild a public release'; exit 1; }
+              gh release edit "$GITHUB_REF_NAME" --draft=true
+            fi
           else
             gh release create "$GITHUB_REF_NAME" --verify-tag --draft \
               --title "DREAM $version" --generate-notes "${flags[@]}"
