@@ -7,7 +7,10 @@
  *   PRESET      the piece
  *   K1 PITCH    the series up or down, semitones          K2 FINE     cents
  *   K3 SPREAD   the tones across the stereo field         K4 TILT     dB per octave up the series
- *   ALGORITHM   DRIFT: 0 holds the tones phase-locked; up, their phases slowly drift against each other
+ *   SELECT      the second page of knobs:
+ *   K1 DENSITY  how many of the tones sound, the simplest kept longest   K2 BALANCE   the base against the rest, dB
+ *   K3 DRIFT    0 holds the tones phase-locked; up, their phases slowly drift against each other
+ *   K4 EVOLVE   minutes for the density to breathe down to one tone and back; OFF holds it
  *   MASTER      volume                                     SAVE        keeps all of it for the next power-on
  *
  * Part of the unity build (device/unity.c, host/plat_host.c), after the platform: gfx.c and announce.c are in scope. */
@@ -55,11 +58,19 @@ static const piece_t PIECES[] = {
      * the ratios without 5. Its own sets aren't published; this is a choice: a 60 Hz drone (8) under
      * 49:56:63:72, all of 2, 3 and 7, led by 49 = 7 x 7 */
     {"MAP OF 49'S DREAM", 7.5f, 5, 1, 0, {8, 49, 56, 63, 72}},
+    /* The Well-Tuned Piano's tuning entire: its twelve pitches (Eb 1/1, E 567/512, F 9/8, F# 147/128, G 21/16,
+     * G# 1323/1024, A 189/128, Bb 3/2, B 49/32, C 7/4, C# 441/256, D 63/32) in three octaves from the Eb, 36 tones
+     * on Eb/1024. Not a chord Young plays; the lattice his chords come from, all at once. DENSITY thins it
+     * toward Eb and Bb; EVOLVE breathes it */
+    {"WELL-TUNED PIANO TUNING", WTP_EB3 / 1024.0f, 36, 0, 0,
+     {1024, 1134, 1152, 1176, 1323, 1344, 1512, 1536, 1568, 1764, 1792, 2016,
+      2048, 2268, 2304, 2352, 2646, 2688, 3024, 3072, 3136, 3528, 3584, 4032,
+      4096, 4536, 4608, 4704, 5292, 5376, 6048, 6144, 6272, 7056, 7168, 8064}},
 };
 #define NPIECES ((int)(sizeof PIECES / sizeof PIECES[0]))
 
 /* --------------------------------------------------------------- settings --- */
-#define SET_MAGIC 0x44524D31u            /* "DRM1" */
+#define SET_MAGIC 0x44524D32u            /* "DRM2" */
 typedef struct {
     uint32_t magic;
     uint8_t piece;
@@ -69,7 +80,10 @@ typedef struct {
     int8_t tilt;                         /* half dB per octave, -12 .. +12 (-6 .. +6 dB) */
     uint8_t playing;
     uint8_t drift;                       /* DRIFT: 0 (locked) .. 100 */
-    uint8_t rsv;
+    uint8_t density;                     /* DENSITY: % of the tones above the base that sound, 0 .. 100 */
+    int8_t balance;                      /* BALANCE: the base, dB, -12 .. +12 */
+    uint8_t evolve;                      /* EVOLVE: minutes a breath, 0 (off) .. 60 */
+    uint8_t rsv[2];
 } settings_t;
 static settings_t set;
 static uint8_t set_dirty;
@@ -84,12 +98,16 @@ static void settings_defaults(void)
     set.tilt = 0;
     set.playing = 1;
     set.drift = 0;
+    set.density = 100;
+    set.balance = 0;
+    set.evolve = 0;
 }
 
 static int settings_ok(void)
 {
     return set.magic == SET_MAGIC && set.piece < NPIECES && set.semi >= -12 && set.semi <= 12 && set.fine >= -50 &&
-           set.fine <= 50 && set.spread <= 100 && set.tilt >= -12 && set.tilt <= 12 && set.playing <= 1 && set.drift <= 100;
+           set.fine <= 50 && set.spread <= 100 && set.tilt >= -12 && set.tilt <= 12 && set.playing <= 1 && set.drift <= 100 &&
+           set.density <= 100 && set.balance >= -12 && set.balance <= 12 && set.evolve <= 60;
 }
 
 /* ------------------------------------------------------------ the drone --- */
@@ -102,12 +120,57 @@ static float unit_hz(void)
     return p->unit_hz * fm_exp2f(((float)set.semi * 100.0f + (float)set.fine) * (1.0f / 1200.0f));
 }
 
+/* DENSITY's order: the tones above the base, simplest first, by their odd part (a harmonic's number with the
+ * factors of 2 taken out: 224 = 7 x 32 before 288 = 9 x 32 before 238 = 119 x 2), then the lower. The base
+ * always sounds. rank[i]: tone i's place (0 the simplest); the base's -1. */
+static int8_t rank[DR_MAXT];
+static uint8_t n_upper;                  /* the tones above the base */
+static uint8_t n_sounding;               /* of those, how many DENSITY (and EVOLVE) let sound */
+static float evolve_now = 1.0f;          /* EVOLVE's share of DENSITY now: 1 .. down to one tone */
+
+static uint32_t odd_part(uint32_t h)
+{
+    while (h && !(h & 1u))
+        h >>= 1;
+    return h;
+}
+
+static void rank_tones(void)
+{
+    const piece_t *p = &PIECES[set.piece];
+    int i, j;
+    n_upper = (uint8_t)(p->n - p->nbase);
+    for (i = 0; i < p->n; i++) {
+        int r = 0;
+        if (i < p->nbase) {
+            rank[i] = -1;
+            continue;
+        }
+        for (j = p->nbase; j < p->n; j++) {
+            uint32_t oi = odd_part(p->harm[i]), oj = odd_part(p->harm[j]);
+            if (oj < oi || (oj == oi && p->harm[j] < p->harm[i]))
+                r++;
+        }
+        rank[i] = (int8_t)r;
+    }
+}
+
+static int sounding_count(void)          /* DENSITY times EVOLVE's breath, at least one */
+{
+    float d = (float)set.density * 0.01f * evolve_now;
+    int k = (int)(d * (float)n_upper + 0.5f);
+    return k < 1 ? 1 : k > n_upper ? n_upper : k;
+}
+
 static void drone_update(void)
 {
     const piece_t *p = &PIECES[set.piece];
     float sum = 0.0f, s = (float)set.spread * 0.01f, db_oct = (float)set.tilt * 0.5f;
+    float base_g = fm_db2lin((float)set.balance);
     uint16_t hmin = 0xFFFFu;
     int i;
+    rank_tones();
+    n_sounding = (uint8_t)sounding_count();
     st.unit_hz = unit_hz();
     st.n = p->n;
     st.playing = set.playing;
@@ -118,6 +181,10 @@ static void drone_update(void)
             hmin = p->harm[i];
     for (i = 0; i < p->n; i++) {
         float a = fm_db2lin(db_oct * fm_log2f((float)p->harm[i] / (float)hmin));
+        if (rank[i] < 0)
+            a *= base_g;                 /* BALANCE */
+        else if (rank[i] >= n_sounding)
+            a = 0.0f;                    /* DENSITY: thinned out (it fades) */
         st.harm[i] = p->harm[i];
         st.amp[i] = a;
         if (p->n <= 1)
@@ -129,7 +196,7 @@ static void drone_update(void)
         sum += a;
     }
     for (i = 0; i < p->n; i++)           /* their sum 1: in phase, 0.9 of full scale at most */
-        st.amp[i] /= sum;
+        st.amp[i] /= fm_maxf(sum, 1e-6f);
     {   /* DRIFT: up to 0.1 Hz (squared, so the low end is fine), each tone its own share and direction; the
          * lowest stays put. 97391.5 phase steps a hertz */
         float r = (float)set.drift * 0.01f;
@@ -228,6 +295,7 @@ static struct {
     uint32_t msg_until;
     uint32_t btn;
     uint8_t redraw;
+    uint8_t page;                        /* the knobs' page: 0 or 1 */
 } ui;
 
 void app_say(const char *a, const char *b)
@@ -253,6 +321,10 @@ void app_say(const char *a, const char *b)
     }
 }
 
+/* the knobs, two pages of four (SELECT turns the page): 0-3 PITCH FINE SPREAD TILT, 4-7 DENSITY BALANCE DRIFT
+ * EVOLVE */
+static const char *const KNOB_NAME[8] = {"PITCH", "FINE", "SPREAD", "TILT", "DENSITY", "BALANCE", "DRIFT", "EVOLVE"};
+
 static void knob_text(int k, char *t)
 {
     char u[12];
@@ -267,10 +339,7 @@ static void knob_text(int k, char *t)
     case 2:
         int_text(set.spread, t, 0);
         break;
-    case 4:
-        int_text(set.drift, t, 0);
-        break;
-    default: {                           /* half dB steps: "-1.5", "0", "+3" */
+    case 3: {                            /* half dB steps: "-1.5", "0", "+3" */
         int32_t a = set.tilt < 0 ? -set.tilt : set.tilt;
         text_cat(t, set.tilt < 0 ? "-" : set.tilt > 0 ? "+" : "");
         int_text(a / 2, u, 0);
@@ -279,9 +348,26 @@ static void knob_text(int k, char *t)
             text_cat(t, ".5");
         break;
     }
+    case 4:
+        int_text(set.density, t, 0);
+        text_cat(t, "%");
+        break;
+    case 5:
+        int_text(set.balance, t, 1);
+        break;
+    case 6:
+        int_text(set.drift, t, 0);
+        break;
+    default:
+        if (set.evolve) {
+            int_text(set.evolve, t, 0);
+            text_cat(t, "M");
+        } else {
+            text_cat(t, "OFF");
+        }
+        break;
     }
 }
-static const char *const KNOB_NAME[5] = {"PITCH", "FINE", "SPREAD", "TILT", "DRIFT"};
 
 static void knob_turn(int k, int32_t e)
 {
@@ -296,17 +382,48 @@ static void knob_turn(int k, int32_t e)
     case 2:
         set.spread = (uint8_t)clamp((int32_t)set.spread + e * 2, 0, 100);
         break;
+    case 3:
+        set.tilt = (int8_t)clamp(set.tilt + e, -12, 12);
+        break;
     case 4:
+        set.density = (uint8_t)clamp((int32_t)set.density + e * 2, 0, 100);
+        break;
+    case 5:
+        set.balance = (int8_t)clamp(set.balance + e, -12, 12);
+        break;
+    case 6:
         set.drift = (uint8_t)clamp((int32_t)set.drift + e * 2, 0, 100);
         break;
     default:
-        set.tilt = (int8_t)clamp(set.tilt + e, -12, 12);
+        set.evolve = (uint8_t)clamp((int32_t)set.evolve + e, 0, 60);
+        if (!set.evolve)
+            evolve_now = 1.0f;
         break;
     }
     set_dirty = 1;
     drone_update();
     knob_text(k, t);
     app_say(KNOB_NAME[k], t);
+}
+
+/* EVOLVE: the density breathes, a raised cosine from DENSITY down to one tone and back, once in set.evolve
+ * minutes. Checked twice a second; the drone hears of it only when a tone comes or goes */
+static void evolve_tick(void)
+{
+    static uint32_t last, t0;
+    uint32_t now = plat_ms();
+    float ph;
+    if (now - last < 500u)
+        return;
+    last = now;
+    if (!set.evolve) {
+        t0 = now;
+        return;
+    }
+    ph = (float)((now - t0) % ((uint32_t)set.evolve * 60000u)) / ((float)set.evolve * 60000.0f);
+    evolve_now = 0.5f + 0.5f * fm_cosf(ph * FM_TWO_PI);
+    if (sounding_count() != n_sounding)
+        drone_update();
 }
 
 static void speak(void)                  /* a screen reader that has just started listening hears the screen */
@@ -354,17 +471,19 @@ static void input(void)
         }
         app_say(PIECES[set.piece].name, "");
     }
+    if ((e = plat_enc(EN_SELECT)) != 0) {
+        ui.page = (uint8_t)(e > 0);
+        app_say(ui.page ? "PAGE 2" : "PAGE 1", "");
+    }
     if ((e = plat_enc(EN_K1)) != 0)
-        knob_turn(0, e);
+        knob_turn(ui.page * 4 + 0, e);
     if ((e = plat_enc(EN_K2)) != 0)
-        knob_turn(1, e);
+        knob_turn(ui.page * 4 + 1, e);
     if ((e = plat_enc(EN_K3)) != 0)
-        knob_turn(2, e);
+        knob_turn(ui.page * 4 + 2, e);
     if ((e = plat_enc(EN_K4)) != 0)
-        knob_turn(3, e);
-    if ((e = plat_enc(EN_ALGO)) != 0)
-        knob_turn(4, e);
-    (void)plat_enc(EN_SELECT);
+        knob_turn(ui.page * 4 + 3, e);
+    (void)plat_enc(EN_ALGO);
     if (btn != ui.btn)
         ui.redraw = 1;
     ui.btn = btn;
@@ -409,8 +528,14 @@ static void draw_cluster(float u)
     for (i = 0; i < p->n; i++)
         amax = fm_maxf(amax, st.amp[i]);
 
-    /* "15 TONES 224 - 288", then the band in notes and Hz */
-    int_text(p->n - p->nbase, t, 0);
+    /* "15 TONES 224 - 288" (or "9/15" while DENSITY thins them), then the band in notes */
+    t[0] = 0;
+    if (n_sounding < n_upper) {
+        int_text(n_sounding, t, 0);
+        text_cat(t, "/");
+    }
+    int_text(p->n - p->nbase, nm, 0);
+    text_cat(t, nm);
     text_cat(t, " TONES  ");
     int_text(h0, nm, 0);
     text_cat(t, nm);
@@ -424,11 +549,12 @@ static void draw_cluster(float u)
     text_cat(t, nm);
     cv_text(120 - text_w(&FONT_XS, t) / 2, 38, &FONT_XS, t, C_GRAY);
 
-    /* the cluster: a line per tone, along its harmonic number */
+    /* the cluster: a line per tone, placed by pitch (a log scale: an octave is an octave wherever it is) */
     cv_rect(10, 104, 220, 1, C_LINE);
     for (i = p->nbase; i < p->n; i++) {
         int32_t hgt = (int32_t)(fm_clampf(dr_level[i] / amax, 0.0f, 1.0f) * 50.0f + 0.5f);
-        x = 10 + (h1 > h0 ? (p->harm[i] - h0) * 218 / (h1 - h0) : 109);
+        x = 10 + (h1 > h0 ? (int32_t)(fm_log2f((float)p->harm[i] / (float)h0) /
+                                      fm_log2f((float)h1 / (float)h0) * 218.0f + 0.5f) : 109);
         cv_rect(x, 54, 2, 50, C_LINE);
         if (hgt)
             cv_rect(x, 104 - hgt, 2, hgt, C_HI);
@@ -543,12 +669,14 @@ static void draw(void)
 knobs:
     cv_begin(240, 50, C_BLACK);
     cv_rect(0, 0, 240, 1, C_LINE);
-    for (i = 0; i < 5; i++) {
-        int32_t x = 4 + i * 47;
-        knob_text(i, t);
-        cv_text(x, 8, &FONT_XS, KNOB_NAME[i], C_GRAY);
+    for (i = 0; i < 4; i++) {            /* this page's four */
+        int32_t x = 4 + i * 57, k = ui.page * 4 + i;
+        knob_text(k, t);
+        cv_text(x, 8, &FONT_XS, KNOB_NAME[k], C_GRAY);
         cv_text(x, 24, &FONT_B, t, C_HI);
     }
+    cv_rect(226, 12, 6, 6, ui.page ? C_LINE : C_GRAY);    /* which page: two dots, SELECT turns */
+    cv_rect(226, 26, 6, 6, ui.page ? C_GRAY : C_LINE);
     cv_blit(0, 188);
 }
 
@@ -563,6 +691,7 @@ void app_frame(void)
     static uint32_t last_draw;
     uint32_t now = plat_ms();
     input();
+    evolve_tick();
     speak();
     if (ui.msg_until && now >= ui.msg_until) {
         ui.msg_until = 0;
@@ -588,6 +717,12 @@ int app_expect(const char *what, int *got)
         *got = set.semi;
     else if (!strcmp(what, "fine"))
         *got = set.fine;
+    else if (!strcmp(what, "density"))
+        *got = set.density;
+    else if (!strcmp(what, "balance"))
+        *got = set.balance;
+    else if (!strcmp(what, "sounding"))
+        *got = n_sounding;
     else if (!strcmp(what, "drift"))
         *got = set.drift;
     else if (!strcmp(what, "dirty"))

@@ -76,5 +76,43 @@ shot map49.png
 wav map49.wav
 wait 20000
 wavstop
-turn ALGO 5
+turn SELECT 1
+turn K3 5
 expect drift 10
+turn SELECT -1
+# the second page: DENSITY thins the Dream House by simplicity
+turn PRESET -10
+wait 300
+turn PRESET 1
+wait 15000
+expect piece 1
+turn SELECT 1
+turn K1 -25
+wait 15000
+expect density 50
+shot density.png
+# 8 of 15 kept, by odd part: 224 (7) 288 (9) 232 (29) 248 (31) 236 244 268 284; 226 (113) is thinned
+expect level3 >40
+expect level4 <5
+turn K1 25
+turn K2 6
+wait 10000
+expect balance 6
+turn K2 -6
+# EVOLVE 1 minute: by half a minute the density is near one tone
+turn K4 1
+wait 32000
+expect sounding <3
+shot evolve.png
+turn K4 -1
+wait 10000
+expect sounding 15
+turn SELECT -1
+# the Well-Tuned Piano tuning: 36 tones
+turn PRESET 10
+wait 15000
+expect piece 6
+shot wtp.png
+wav wtp.wav
+wait 20000
+wavstop

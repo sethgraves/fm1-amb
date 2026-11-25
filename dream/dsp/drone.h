@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 #define DR_SR 44100.0f
-#define DR_MAXT 32                     /* tones, at most (the chip's real limit is measured, not assumed) */
+#define DR_MAXT 64                     /* tones, at most: 18 measured under 1% of the FM-1's audio time */
 
 typedef struct {
     float unit_hz;                     /* the series' unit: tone h sounds at h * unit_hz */
