@@ -6,13 +6,13 @@ wait 2000
 shot open-b.png
 expect playing 1
 expect piece 0
-expect variant 1
+expect variant 0
 wav swell.wav
 wait 12000
 wavstop
 shot playing.png
-expect level0 >480
-expect level1 >480
+expect level0 >150
+expect level1 >150
 # PITCH up a semitone: the unit glides, both tones together
 turn K1 1
 wait 1500
@@ -24,7 +24,7 @@ wait 1500
 wav held.wav
 wait 20000
 wavstop
-# STOP: both fade
+# STOP: they fade
 tap PLAY
 wait 12000
 expect playing 0
@@ -37,44 +37,19 @@ expect dirty 0
 reboot
 wait 600
 expect playing 1
-# the Dream House: 18 tones
+# PRESET's order: the Opening Chord, the tuning, Map of 49's Dream, Drift Study, the Magic Chord, the Dream House,
+# 1960 #7. The Well-Tuned Piano tuning: 36 tones
 turn PRESET 1
-wait 600
-expect piece 1
 wait 15000
-shot dreamhouse.png
-expect level3 >40
-wav dreamhouse.wav
-wait 30000
+expect piece 1
+shot wtp.png
+wav wtp.wav
+wait 20000
 wavstop
-# The Well-Tuned Piano: the Opening Chord, then the Magic Chord
+# Map of 49's Dream: no drift; DRIFT on the second page
 turn PRESET 1
 wait 15000
 expect piece 2
-shot opening.png
-wav opening.wav
-wait 20000
-wavstop
-turn PRESET 1
-wait 15000
-expect piece 3
-shot magic.png
-wav magic.wav
-wait 20000
-wavstop
-# Drift Study: drift 40 from the piece
-turn PRESET 1
-wait 15000
-expect piece 4
-expect drift 40
-shot drift.png
-wav drift.wav
-wait 60000
-wavstop
-# Map of 49's Dream: no drift; ALGORITHM turns DRIFT
-turn PRESET 1
-wait 15000
-expect piece 5
 expect drift 0
 shot map49.png
 wav map49.wav
@@ -84,12 +59,33 @@ turn SELECT 1
 turn K3 5
 expect drift 10
 turn SELECT -1
-# the second page: DENSITY thins the Dream House by simplicity
-turn PRESET -10
-wait 300
+# Drift Study: drift 40 from the piece
 turn PRESET 1
 wait 15000
-expect piece 1
+expect piece 3
+expect drift 40
+shot drift.png
+wav drift.wav
+wait 60000
+wavstop
+# The Magic Chord
+turn PRESET 1
+wait 15000
+expect piece 4
+shot magic.png
+wav magic.wav
+wait 20000
+wavstop
+# the Dream House: 18 tones
+turn PRESET 1
+wait 15000
+expect piece 5
+expect level3 >40
+shot dreamhouse.png
+wav dreamhouse.wav
+wait 30000
+wavstop
+# the second page: DENSITY thins the Dream House by simplicity
 turn SELECT 1
 turn K1 -25
 wait 15000
@@ -111,26 +107,28 @@ shot evolve.png
 turn K4 -1
 wait 10000
 expect sounding 15
-turn SELECT -1
-# a new piece starts the second page over
-turn SELECT 1
+# a new piece starts the second page over: 1960 #7, last
 turn K1 -10
 expect density 80
 turn PRESET 10
 expect density 100
-turn SELECT -1
-# the Well-Tuned Piano tuning: 36 tones
-wait 15000
 expect piece 6
-shot wtp.png
-wav wtp.wav
+turn SELECT -1
+wait 15000
+shot b3.png
+# the Opening Chord, first
+turn PRESET -10
+wait 15000
+expect piece 0
+shot opening.png
+wav opening.wav
 wait 20000
 wavstop
 # versions (ALGORITHM): the Dream House's bases
-turn PRESET -10
-turn PRESET 1
+turn PRESET 10
+turn PRESET -1
 wait 300
-expect piece 1
+expect piece 5
 expect variant 6
 expect ntones 18
 turn ALGO -5
@@ -144,9 +142,9 @@ expect variant 7
 expect ntones 15
 shot emptybase.png
 # the Magic Opening Chord
-turn PRESET 2
+turn PRESET -1
 wait 300
-expect piece 3
+expect piece 4
 turn ALGO 1
 wait 15000
 expect variant 1
@@ -156,8 +154,9 @@ wav magicopening.wav
 wait 15000
 wavstop
 # 1960 #7 in B4
-turn PRESET -10
+turn PRESET 10
 turn ALGO 1
 wait 8000
+expect piece 6
 expect variant 2
 shot b4.png

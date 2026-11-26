@@ -106,15 +106,21 @@ static const piece_t VWTP[] = {
 };
 
 #define NV(v) ((uint8_t)(sizeof v / sizeof v[0]))
+/* the order on PRESET: the Opening Chord first, the Well-Tuned Piano's tuning second, then the rest from the
+ * newest back to Composition 1960 #7 */
 static const work_t PIECES[] = {
-    {B3_HZ * 0.25f, 0, NV(V1960), 1, V1960},
-    {4.5f, 0, NV(VDREAM), 6, VDREAM},
     {WTP_EB3 * 0.25f, 0, NV(VOPEN), 0, VOPEN},
-    {WTP_EB3 / 512.0f, 0, NV(VMAGIC), 0, VMAGIC},
-    {B3_HZ * 0.5f, 40, NV(VDRIFT), 0, VDRIFT},
-    {7.5f, 0, NV(VMAP), 0, VMAP},
     {WTP_EB3 / 1024.0f, 0, NV(VWTP), 0, VWTP},
+    {7.5f, 0, NV(VMAP), 0, VMAP},
+    {B3_HZ * 0.5f, 40, NV(VDRIFT), 0, VDRIFT},
+    {WTP_EB3 / 512.0f, 0, NV(VMAGIC), 0, VMAGIC},
+    {4.5f, 0, NV(VDREAM), 6, VDREAM},
+    {B3_HZ * 0.25f, 0, NV(V1960), 1, V1960},
 };
+/* settings saved before that order (order 0) had 1960 #7, Dream House, Opening Chord, Magic Chord, Drift Study,
+ * Map of 49's Dream, the tuning: each one's place now */
+static const uint8_t ORDER_FROM_V1[] = {6, 5, 0, 4, 3, 2, 1};
+#define ORDER_V 1u
 #define NPIECES ((int)(sizeof PIECES / sizeof PIECES[0]))
 
 /* --------------------------------------------------------------- settings --- */
@@ -132,7 +138,7 @@ typedef struct {
     int8_t balance;                      /* BALANCE: the base, dB, -12 .. +12 */
     uint8_t evolve;                      /* EVOLVE: minutes a breath, 0 (off) .. 60 */
     uint8_t variant;                     /* ALGORITHM: the piece's version */
-    uint8_t rsv;
+    uint8_t order;                       /* ORDER_V: PRESET's order the piece number is in (0: the first) */
 } settings_t;
 static settings_t set;
 static uint8_t set_dirty;
@@ -151,6 +157,7 @@ static void settings_defaults(void)
     set.balance = 0;
     set.evolve = 0;
     set.variant = PIECES[0].var0;
+    set.order = ORDER_V;
 }
 
 static int settings_ok(void)
@@ -273,7 +280,12 @@ static void drone_push(void)
 void app_init(void)
 {
     dr_init();
-    if (plat_store_load(OBJ_SETTINGS, &set, sizeof set) != (int)sizeof set || !settings_ok())
+    if (plat_store_load(OBJ_SETTINGS, &set, sizeof set) == (int)sizeof set && set.magic == SET_MAGIC
+        && set.order == 0u && set.piece < sizeof ORDER_FROM_V1) {   /* saved in the first order: the same piece */
+        set.piece = ORDER_FROM_V1[set.piece];
+        set.order = ORDER_V;
+    }
+    if (set.magic != SET_MAGIC || set.order != ORDER_V || !settings_ok())
         settings_defaults();
     drone_update();
     drone_push();

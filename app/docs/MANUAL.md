@@ -49,10 +49,10 @@ FM-1's time the sound takes.
 
 | Piece | |
 | --- | --- |
-| Composition 1960 #7 | B and F#, "to be held for a long time", as a pure fifth (3:2). In B2, B3 or B4 |
-| Dream House | the 15 tones from harmonic 224 to 288 of *The Base 9:7:4 Symmetry in Prime Time…*, worked from its title, over any of its eight optional bases |
 | The Opening Chord | The Well-Tuned Piano's, 4:6:7:8:9:12 on Young's Eb (297.99 Hz) |
-| The Magic Chord | The Well-Tuned Piano's: eight tones over an Eb that never sounds; or the Magic Opening Chord, both chords together |
-| Drift Study | three tones, 6:7:8 on B, drifting. The recordings' own tones are unpublished: these are chosen |
-| Map of 49's Dream | a 60 Hz drone under 49:56:63:72, without the number 5. Chosen by Young's rules; his own sets are unpublished |
 | Well-Tuned Piano Tuning | all twelve of its pitches in three octaves, 36 tones. Good with DENSITY and EVOLVE |
+| Map of 49's Dream | a 60 Hz drone under 49:56:63:72, without the number 5. Chosen by Young's rules; his own sets are unpublished |
+| Drift Study | three tones, 6:7:8 on B, drifting. The recordings' own tones are unpublished: these are chosen |
+| The Magic Chord | The Well-Tuned Piano's: eight tones over an Eb that never sounds; or the Magic Opening Chord, both chords together |
+| Dream House | the 15 tones from harmonic 224 to 288 of *The Base 9:7:4 Symmetry in Prime Time…*, worked from its title, over any of its eight optional bases |
+| Composition 1960 #7 | B and F#, "to be held for a long time", as a pure fifth (3:2). In B2, B3 or B4 |

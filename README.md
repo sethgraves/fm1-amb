@@ -19,13 +19,13 @@ PRESET chooses the piece, ALGORITHM its version.
 
 | Piece | Versions | Source |
 | --- | --- | --- |
-| Composition 1960 #7 | B and F# at 3:2, in B2, B3, B4 | the score's two pitches, as a pure fifth |
-| Dream House | the eight inclusory optional bases: 7; 8; 14:8; 18:14:8; 18:16:14; 18:16:14:8; 9:7:4; empty | the 15 tones from 224 to 288, worked from the title of *The Base 9:7:4 Symmetry in Prime Time…* |
 | The Opening Chord | | The Well-Tuned Piano: Eb Bb C Eb F Bb, 4:6:7:8:9:12, Young's A (189/128) at 440 Hz |
-| The Magic Chord | the Magic Chord; the Magic Opening Chord | The Well-Tuned Piano, its keys as sounded (Gann 1993) |
-| Drift Study | | **tones chosen here**: 6:7:8 on B. The recordings' own tones are unpublished |
-| Map of 49's Dream | | **tones chosen here**: a 60 Hz drone under 49:56:63:72, without 5, by Young's stated rules |
 | Well-Tuned Piano Tuning | | the tuning's twelve pitches in three octaves, 36 tones at once |
+| Map of 49's Dream | | **tones chosen here**: a 60 Hz drone under 49:56:63:72, without 5, by Young's stated rules |
+| Drift Study | | **tones chosen here**: 6:7:8 on B. The recordings' own tones are unpublished |
+| The Magic Chord | the Magic Chord; the Magic Opening Chord | The Well-Tuned Piano, its keys as sounded (Gann 1993) |
+| Dream House | the eight inclusory optional bases: 7; 8; 14:8; 18:14:8; 18:16:14; 18:16:14:8; 9:7:4; empty | the 15 tones from 224 to 288, worked from the title of *The Base 9:7:4 Symmetry in Prime Time…* |
+| Composition 1960 #7 | B and F# at 3:2, in B2, B3, B4 | the score's two pitches, as a pure fifth |
 
 ## The controls
 
