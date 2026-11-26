@@ -11,7 +11,7 @@
 #endif
 
 volatile tp_cfg_t tp_cfg = {1, TP_CASSETTE, 0, 0.3f, 0.5f, 0.5f, 0.4f, 0.8f, 0.6f, 0.4f, 0.3f,
-                            0.0f, 0.0f, 0.4f, 12.0f, 0};
+                            0.0f, 0.0f, 0.4f, 12.0f, 0, 432.0f};
 volatile float tp_speed = 1.0f, tp_reel_turns, tp_drop, tp_peak;
 volatile uint8_t tp_chord;
 volatile uint32_t tp_notes, tp_ghosts, tp_drops, tp_drags;
@@ -39,7 +39,8 @@ static inline float psin01(float ph)
     return y * (0.775f + 0.225f * fm_fabsf(y));
 }
 static inline float lerp(float a, float b, float t) { return a + (b - a) * t; }
-static float mtof(float m) { return 440.0f * fm_exp2f((m - 69.0f) * (1.0f / 12.0f)); }
+static float a4 = 432.0f;              /* the tuning, from tp_cfg once a block */
+static float mtof(float m) { return a4 * fm_exp2f((m - 69.0f) * (1.0f / 12.0f)); }
 static float onepole(float hz) { return 1.0f - fm_exp2f(-6.2831853f * 1.442695f * hz / TP_SR); }   /* LP coefficient */
 static float decay(float s) { return fm_exp2f(-1.442695f / (s * TP_SR)); }                      /* per sample, to 1/e in s */
 
@@ -814,6 +815,7 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
 
     if (c.scene != cur_scene && c.scene < TP_NSCENES)
         scene_start(c.scene);
+    a4 = fm_clampf(c.a4, 400.0f, 460.0f);
     if (c.capture != cap_seen) {
         cap_seen = c.capture;
         loop_capture();

@@ -11,6 +11,7 @@
  *               the third, the loop: K1 BASINSKI (from the machine to the loop), K2 FEED (new music onto it each
  *               pass), K3 LENGTH (seconds), K4 DECAY (how fast it disintegrates)
  *   REC         CAPTURE: a fresh loop, recorded from the machine (lit while it records the first pass)
+ *   OCT- OCT+   the tuning, A = 415 .. 446 Hz a hertz at a time (432 by default)
  *   HOME (hold) the tape's wear back to new
  *   SAVE        keeps the settings for the next power-on
  *   MASTER      volume
@@ -28,7 +29,7 @@ enum { K_AGE, K_DENSITY, K_SPACE, K_DRIVE, K_PADS, K_BELLS, K_FLUTE, K_NATURE, K
 #define NPAGES 3
 typedef struct {
     uint32_t magic;
-    uint8_t playing, type, scene, rsv;
+    uint8_t playing, type, scene, tune;  /* tune: A above middle C less 400 Hz (0: an older record, 432) */
     int8_t k[NK];                        /* 0..100 each */
 } settings_t;
 static settings_t set;
@@ -57,6 +58,7 @@ static void settings_defaults(void)
     set.playing = 1;
     set.type = TP_CASSETTE;
     set.scene = 0;
+    set.tune = 32;
     for (i = 0; i < NK; i++)
         set.k[i] = K_DEF[i];
 }
@@ -64,8 +66,11 @@ static void settings_defaults(void)
 static int settings_ok(void)
 {
     int i;
-    if (set.magic != SET_MAGIC || set.playing > 1u || set.type >= TP_NTYPES || set.scene >= TP_NSCENES)
+    if (set.magic != SET_MAGIC || set.playing > 1u || set.type >= TP_NTYPES || set.scene >= TP_NSCENES
+        || (set.tune && (set.tune < 15u || set.tune > 46u)))
         return 0;
+    if (!set.tune)
+        set.tune = 32;
     for (i = 0; i < NK; i++)
         if (set.k[i] < k_lo(i) || set.k[i] > k_hi(i))
             return 0;
@@ -104,6 +109,18 @@ static void engine_push(void)
     tp_cfg.feed = (float)set.k[K_FEED] * 0.01f;
     tp_cfg.length = (float)set.k[K_LENGTH];
     tp_cfg.decay = (float)set.k[K_DECAY] * 0.01f;
+    tp_cfg.a4 = 400.0f + (float)set.tune;
+}
+
+static void text_cat(char *d, const char *s);
+static void int_text(int32_t v, char *b);
+static void tune_text(char *t)           /* "A = 432" */
+{
+    char n[8];
+    t[0] = 0;
+    text_cat(t, "A = ");
+    int_text(400 + set.tune, n);
+    text_cat(t, n);
 }
 
 void app_init(void)
@@ -235,6 +252,16 @@ static void input(void)
             } else {
                 app_say("SAVE", "FAILED");
             }
+        } else if (k == B_OCTDN || k == B_OCTUP) {
+            char t[12];
+            int32_t v = clamp((int32_t)set.tune + (k == B_OCTUP ? 1 : -1), 15, 46);
+            if (v != set.tune) {
+                set.tune = (uint8_t)v;
+                set_dirty = 1;
+                engine_push();
+            }
+            tune_text(t);
+            app_say("TUNING", t);
         } else if (k == B_REC) {
             tp_cfg.capture++;
             app_say("CAPTURE", "A FRESH LOOP");
@@ -323,6 +350,9 @@ static void speak(void)
         text_cat(t, n);
         text_cat(t, ". WEAR ");
         int_text(wear_pct(), n);
+        text_cat(t, n);
+        text_cat(t, ". ");
+        tune_text(n);
         text_cat(t, n);
         ann_say(t, 0, ANN_NOW);
     }
@@ -543,6 +573,8 @@ int app_expect(const char *what, int *got)
         *got = (int)tp_drops;
     else if (!strcmp(what, "drags"))
         *got = (int)tp_drags;
+    else if (!strcmp(what, "tune"))
+        *got = 400 + set.tune;
     else if (!strcmp(what, "passes"))
         *got = (int)tp_passes;
     else if (!strcmp(what, "capturing"))

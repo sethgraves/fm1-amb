@@ -39,6 +39,7 @@ typedef struct {
     float decay;                       /* 0..1: how fast it disintegrates */
     float length;                      /* the loop, seconds (TP_LOOP_MIN .. tp_loop_max()) */
     uint8_t capture;                   /* a count: each change starts a fresh loop */
+    float a4;                          /* the tuning: A above middle C, Hz (432 by default) */
 } tp_cfg_t;
 
 extern volatile tp_cfg_t tp_cfg;

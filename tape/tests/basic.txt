@@ -118,3 +118,18 @@ tap REC
 wait 100
 expect damage 0
 expect passes 0
+# the tuning: 432 by default, a hertz a press, kept by SAVE
+expect tune 432
+tap OCT+
+wait 50
+expect tune 433
+tap OCT-
+tap OCT-
+wait 50
+expect tune 431
+tap OCT+
+wait 50
+tap SAVE
+reboot
+wait 600
+expect tune 432

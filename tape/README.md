@@ -28,6 +28,7 @@ bells and flute a tape-wrap before and after them (the machine plans its notes a
 | SELECT | Page 2: K1 PADS, K2 BELLS, K3 FLUTE, K4 NATURE (levels) |
 | SELECT | Page 3, the loop: K1 BASINSKI, K2 FEED, K3 LENGTH, K4 DECAY |
 | REC | CAPTURE: a fresh loop, recorded from the machine (lit while it records the first pass) |
+| OCT- / OCT+ | The tuning, A = 415 to 446 Hz a hertz at a time (432 by default) |
 | HOME (hold 2 s) | The tape's wear back to new |
 | SAVE | Keeps the settings for the next power-on |
 | MASTER | Volume |
