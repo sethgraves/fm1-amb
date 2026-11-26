@@ -82,3 +82,39 @@ expect wear_s 0
 reboot
 wait 600
 expect wear_s 0
+# ---- v2: the loop ----
+# back to a fresh start: music on, a scene, all the levels up
+tap PLAY
+turn K1 40
+turn K2 40
+turn K3 40
+turn K4 -30
+turn SELECT 1
+expect loop_len 176400
+turn K3 -10
+expect loop_len 29400
+# CAPTURE: the first pass records, then it plays round and wears
+tap REC
+wait 100
+expect capturing 1
+wait 2200
+expect capturing 0
+expect passes 1
+# BASINSKI all the way: the loop alone; DECAY all the way: it goes fast
+turn K1 50
+turn K4 50
+wav basinski.wav
+wait 90000
+wavstop
+shot loop.png
+expect passes >40
+expect damage >3000
+# FEED: new music onto the loop each pass
+turn K2 50
+wait 10000
+turn K2 -50
+# CAPTURE again: a clean loop
+tap REC
+wait 100
+expect damage 0
+expect passes 0

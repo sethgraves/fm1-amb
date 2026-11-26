@@ -10,7 +10,8 @@
 #define TP_POOL __attribute__((section(".pool")))
 #endif
 
-volatile tp_cfg_t tp_cfg = {1, TP_CASSETTE, 0, 0.3f, 0.5f, 0.5f, 0.4f, 0.8f, 0.6f, 0.4f, 0.3f};
+volatile tp_cfg_t tp_cfg = {1, TP_CASSETTE, 0, 0.3f, 0.5f, 0.5f, 0.4f, 0.8f, 0.6f, 0.4f, 0.3f,
+                            0.0f, 0.0f, 0.4f, 12.0f, 0};
 volatile float tp_speed = 1.0f, tp_reel_turns, tp_drop, tp_peak;
 volatile uint8_t tp_chord;
 volatile uint32_t tp_notes, tp_ghosts, tp_drops, tp_drags;
@@ -612,6 +613,127 @@ static void gen_step(const scene_t *s, float density, float bells_on, float flut
     step_n++;
 }
 
+/* -------------------------------------------------------------- the loop --- */
+/* After Basinski: a loop of the machine's own output, played round and round, and every pass the oxide comes off
+ * a little more, where it already was coming off. A cell's damage only grows: it dulls, quietens, then drops out,
+ * and its neighbours start to go. Each pass writes in its own hiss, and the 8-bit mu-law adds its grain. */
+uint8_t tp_damage[TP_NCELL];
+volatile uint32_t tp_loop_pos, tp_loop_len = 176400u, tp_passes;
+volatile uint8_t tp_capturing;
+static uint8_t loop[TP_LOOP_BYTES] TP_POOL;
+static float ulaw_dec[256];
+static uint32_t lsub;
+static float lacc, lold, lnew, lwear, lgen;
+static float haas[512];                /* the loop's right: its left a few ms later, for some width */
+static uint32_t haas_w;
+static uint8_t cap_seen;
+
+float tp_loop_max(void) { return (float)TP_LOOP_BYTES * (float)TP_LOOP_DIV / TP_SR; }
+
+static uint8_t ulaw_enc(float x)                 /* x -1..1 */
+{
+    int32_t v = (int32_t)(fm_clampf(x, -1.0f, 1.0f) * 32635.0f), sign = 0, e, m;
+    if (v < 0) {
+        v = -v;
+        sign = 0x80;
+    }
+    v += 0x84;
+    for (e = 7; e > 0 && !(v & (0x4000 >> (7 - e))); e--)
+        ;
+    m = (v >> (e + 3)) & 0x0F;
+    return (uint8_t)~(sign | (e << 4) | m);
+}
+
+static void loop_init(void)
+{
+    int i;
+    for (i = 0; i < 256; i++) {
+        int u = ~i & 0xFF, sign = u & 0x80, e = (u >> 4) & 7, m = u & 0x0F;
+        int32_t v = (((m << 3) + 0x84) << e) - 0x84;
+        ulaw_dec[i] = (float)(sign ? -v : v) * (1.0f / 32768.0f);
+    }
+}
+
+static void loop_capture(void)          /* a fresh loop: no damage; the first pass records the machine whole */
+{
+    uint32_t i;
+    for (i = 0; i < TP_NCELL; i++)
+        tp_damage[i] = 0;
+    tp_loop_pos = 0;
+    lsub = 0;
+    lacc = 0.0f;
+    tp_passes = 0;
+    tp_capturing = 1;
+}
+
+/* a pass ended: the damage grows where it is, flakes into its neighbours, and now and then starts somewhere new */
+static void loop_wear(float decay, uint32_t ncell)
+{
+    uint32_t i, wear = (uint32_t)(decay * 100.0f), seeds = 1u + wear / 8u;
+    if (!wear || !ncell)
+        return;
+    for (i = 0; i < ncell; i++) {
+        uint32_t d = tp_damage[i];
+        if (d) {
+            d += 1u + (d * wear) / 900u;
+            if (d > 255u)
+                d = 255u;
+            tp_damage[i] = (uint8_t)d;
+            if (d > 40u && (rnd() & 63u) < wear / 6u) {
+                uint32_t j = (i + ((rnd() & 1u) ? 1u : ncell - 1u)) % ncell;
+                if (tp_damage[j] < 6u)
+                    tp_damage[j] = 6u;
+            }
+        }
+    }
+    while (seeds--)
+        if ((rnd() % 100u) < wear) {
+            i = rnd() % ncell;
+            if (!tp_damage[i])
+                tp_damage[i] = 3u;
+        }
+}
+
+/* one sample of the machine in; the loop's playback out (left, and the right a little later) */
+static inline void loop_tick(float in, float feed, float decay, float *ol, float *or_)
+{
+    float t, y;
+    lacc += in;
+    if (++lsub >= TP_LOOP_DIV) {
+        uint32_t pos = tp_loop_pos, len = tp_loop_len;
+        float x, d, keep, wr;
+        lsub = 0;
+        x = ulaw_dec[loop[pos]];
+        d = (float)tp_damage[pos / TP_CELL] * (1.0f / 255.0f);
+        lwear += (x - lwear) * (1.0f - 0.85f * d);     /* worn spots go dull */
+        lgen += (lwear - lgen) * (1.0f - 0.12f * decay); /* and every pass a little dull everywhere */
+        keep = (1.0f - 0.3f * d * d) * (1.0f - 0.006f * decay);   /* and quiet */
+        if (d > 0.55f && (rnd() & 255u) < (uint32_t)(d * 70.0f))
+            keep = 0.0f;                               /* and gone */
+        x = lgen * keep + rnds() * 0.0005f * (0.3f + decay);      /* the pass writes its own hiss */
+        lold = lnew;
+        lnew = tp_capturing ? lacc * (1.0f / (float)TP_LOOP_DIV) : x;
+        wr = tp_capturing ? lnew : x * (1.0f - 0.5f * feed) + feed * lacc * (1.0f / (float)TP_LOOP_DIV);
+        loop[pos] = ulaw_enc(wr);
+        lacc = 0.0f;
+        if (++pos >= len) {
+            pos = 0;
+            if (tp_capturing)
+                tp_capturing = 0;
+            else
+                loop_wear(decay, (len + TP_CELL - 1u) / TP_CELL);
+            tp_passes++;
+        }
+        tp_loop_pos = pos;
+    }
+    t = (float)lsub * (1.0f / (float)TP_LOOP_DIV);
+    y = lold + (lnew - lold) * t;
+    *ol = y;
+    *or_ = haas[(haas_w - 300u) & 511u];              /* ~7 ms */
+    haas[haas_w] = y;
+    haas_w = (haas_w + 1u) & 511u;
+}
+
 /* ------------------------------------------------------------------ render --- */
 static float gain_now, music, hiss_on;
 
@@ -640,6 +762,9 @@ void tp_init(void)
     bump_set(dk.bump_hz, dk.bump_db);
     step_next = 0;
     hiss_on = 1.0f;
+    loop_init();
+    cap_seen = tp_cfg.capture;
+    loop_capture();
 }
 
 void tp_panic(void) { gain_now = 0.0f; }
@@ -656,6 +781,17 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
 
     if (c.scene != cur_scene && c.scene < TP_NSCENES)
         scene_start(c.scene);
+    if (c.capture != cap_seen) {
+        cap_seen = c.capture;
+        loop_capture();
+    }
+    {
+        uint32_t len = (uint32_t)(fm_clampf(c.length, TP_LOOP_MIN, tp_loop_max()) * TP_SR / (float)TP_LOOP_DIV);
+        len = len > TP_LOOP_BYTES ? TP_LOOP_BYTES : len;
+        if (tp_loop_pos >= len)
+            tp_loop_pos = 0;
+        tp_loop_len = len;
+    }
     s = &SCENES[cur_scene];
     beat_n /= (float)s->bpm;                           /* samples an eighth */
 
@@ -866,6 +1002,18 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
             f1 = 0.5f * (rl - rr) * dk.width;
             l = f0 + f1;
             r = f0 - f1;
+
+            /* the loop: it records what came off the tape; BASINSKI turns from the machine to the loop */
+            {
+                float ll, lrr, b = c.basinski;
+                loop_tick(0.5f * (l + r), c.feed, c.decay, &ll, &lrr);
+                if (tp_capturing) {                    /* the first pass: the machine, as it is recorded */
+                    ll = l;
+                    lrr = r;
+                }
+                l = l * (1.0f - b) + ll * b;
+                r = r * (1.0f - b) + lrr * b;
+            }
 
             gain_now += (gain - gain_now) * 0.004f;
             l *= gain_now;

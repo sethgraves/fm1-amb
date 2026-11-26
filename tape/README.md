@@ -23,9 +23,18 @@ bells and flute a tape-wrap before and after them (the machine plans its notes a
 | K3 SPACE | The room |
 | K4 DRIVE | How hard the music hits the tape |
 | SELECT | Page 2: K1 PADS, K2 BELLS, K3 FLUTE, K4 NATURE (levels) |
+| SELECT | Page 3, the loop: K1 BASINSKI, K2 FEED, K3 LENGTH, K4 DECAY |
+| REC | CAPTURE: a fresh loop, recorded from the machine (lit while it records the first pass) |
 | HOME (hold 2 s) | The tape's wear back to new |
 | SAVE | Keeps the settings for the next power-on |
 | MASTER | Volume |
+
+**The loop (v2).** After William Basinski's *Disintegration Loops*: the machine records its own output onto a loop
+(2 to 17 seconds, mono, 8-bit at 14.7 kHz) and plays it round, and every pass the oxide comes off a little more,
+always where it was already coming off. Worn spots go dull, then quiet, then drop out, and spread to their
+neighbours, until only hiss and fragments are left. BASINSKI turns from the live machine to the loop alone; FEED
+puts new music onto it each pass (0: it only decays); DECAY sets how fast. The gauge under the tape is the loop
+laid flat: amber where the oxide holds, dark where it has gone, the head a white line.
 
 **Wear.** The tape wears as it plays, and remembers. Each hour of playing ages it a little more on top of AGE, up
 to +40 after ten hours, most of it early. It is written to the flash every ten minutes of play and when the music

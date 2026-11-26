@@ -8,6 +8,9 @@
  *   K1 AGE      new .. ruined: wow, flutter, hiss, dull highs, dropouts, drag, print-through, all at once
  *   K2 DENSITY  how many notes                  K3 SPACE   the room           K4 DRIVE   how hard it hits the tape
  *   SELECT      the second page: K1 PADS, K2 BELLS, K3 FLUTE, K4 NATURE (levels)
+ *               the third, the loop: K1 BASINSKI (from the machine to the loop), K2 FEED (new music onto it each
+ *               pass), K3 LENGTH (seconds), K4 DECAY (how fast it disintegrates)
+ *   REC         CAPTURE: a fresh loop, recorded from the machine (lit while it records the first pass)
  *   HOME (hold) the tape's wear back to new
  *   SAVE        keeps the settings for the next power-on
  *   MASTER      volume
@@ -19,8 +22,10 @@
 #include "fastmath.h"
 #include "tape.h"
 
-#define SET_MAGIC 0x54505631u            /* "TPV1" */
-enum { K_AGE, K_DENSITY, K_SPACE, K_DRIVE, K_PADS, K_BELLS, K_FLUTE, K_NATURE, NK };
+#define SET_MAGIC 0x54505632u            /* "TPV2" */
+enum { K_AGE, K_DENSITY, K_SPACE, K_DRIVE, K_PADS, K_BELLS, K_FLUTE, K_NATURE, K_BASINSKI, K_FEED, K_LENGTH,
+       K_DECAY, NK };
+#define NPAGES 3
 typedef struct {
     uint32_t magic;
     uint8_t playing, type, scene, rsv;
@@ -37,8 +42,13 @@ typedef struct {
 static wear_t wear;
 static uint32_t wear_saved;              /* the seconds the flash has */
 
-static const int8_t K_DEF[NK] = {30, 50, 50, 40, 80, 60, 40, 30};
-static const char *const KNOB_NAME[NK] = {"AGE", "DENSITY", "SPACE", "DRIVE", "PADS", "BELLS", "FLUTE", "NATURE"};
+static const int8_t K_DEF[NK] = {30, 50, 50, 40, 80, 60, 40, 30, 0, 0, 12, 40};
+static const char *const KNOB_NAME[NK] = {"AGE", "DENSITY", "SPACE", "DRIVE", "PADS", "BELLS", "FLUTE", "NATURE",
+                                          "BASINSKI", "FEED", "LENGTH", "DECAY"};
+/* each knob's range and step a detent: LENGTH in seconds, the rest 0..100 */
+static int32_t k_lo(int k) { return k == K_LENGTH ? 2 : 0; }
+static int32_t k_hi(int k) { return k == K_LENGTH ? 17 : 100; }
+static int32_t k_step(int k) { return k == K_LENGTH ? 1 : 2; }
 
 static void settings_defaults(void)
 {
@@ -57,7 +67,7 @@ static int settings_ok(void)
     if (set.magic != SET_MAGIC || set.playing > 1u || set.type >= TP_NTYPES || set.scene >= TP_NSCENES)
         return 0;
     for (i = 0; i < NK; i++)
-        if (set.k[i] < 0 || set.k[i] > 100)
+        if (set.k[i] < k_lo(i) || set.k[i] > k_hi(i))
             return 0;
     return 1;
 }
@@ -90,6 +100,10 @@ static void engine_push(void)
     tp_cfg.bells = (float)set.k[K_BELLS] * 0.01f;
     tp_cfg.flute = (float)set.k[K_FLUTE] * 0.01f;
     tp_cfg.nature = (float)set.k[K_NATURE] * 0.01f;
+    tp_cfg.basinski = (float)set.k[K_BASINSKI] * 0.01f;
+    tp_cfg.feed = (float)set.k[K_FEED] * 0.01f;
+    tp_cfg.length = (float)set.k[K_LENGTH];
+    tp_cfg.decay = (float)set.k[K_DECAY] * 0.01f;
 }
 
 void app_init(void)
@@ -178,13 +192,15 @@ void app_say(const char *a, const char *b)
 static void knob_turn(int k, int32_t e)
 {
     char t[12];
-    int32_t v = clamp((int32_t)set.k[k] + 2 * e, 0, 100);
+    int32_t v = clamp((int32_t)set.k[k] + k_step(k) * e, k_lo(k), k_hi(k));
     if (v != set.k[k]) {
         set.k[k] = (int8_t)v;
         set_dirty = 1;
         engine_push();
     }
     int_text(set.k[k], t);
+    if (k == K_LENGTH)
+        text_cat(t, " S");
     app_say(KNOB_NAME[k], t);
 }
 
@@ -219,6 +235,9 @@ static void input(void)
             } else {
                 app_say("SAVE", "FAILED");
             }
+        } else if (k == B_REC) {
+            tp_cfg.capture++;
+            app_say("CAPTURE", "A FRESH LOOP");
         } else if (k == B_HOME) {
             ui.home_t = now | 1u;
             app_say("HOLD HOME", "TO RESET WEAR");
@@ -249,8 +268,9 @@ static void input(void)
         app_say(TP_SCENE_NAME[set.scene], "");
     }
     if ((e = plat_enc(EN_SELECT)) != 0) {
-        ui.page = (uint8_t)(e > 0);
-        app_say(ui.page ? "PAGE 2" : "PAGE 1", "");
+        static const char *const PAGE[NPAGES] = {"PAGE 1", "PAGE 2", "LOOP"};
+        ui.page = (uint8_t)clamp((int32_t)ui.page + (e > 0 ? 1 : -1), 0, NPAGES - 1);
+        app_say(PAGE[ui.page], "");
     }
     if ((e = plat_enc(EN_K1)) != 0)
         knob_turn(ui.page * 4 + 0, e);
@@ -264,7 +284,8 @@ static void input(void)
         ui.redraw = 1;
     ui.btn = btn;
     plat_glow(1);
-    plat_leds((set.playing ? 1u << B_PLAY : 0u) | (set_dirty ? 1u << B_SAVE : 0u), 0);
+    plat_leds((set.playing ? 1u << B_PLAY : 0u) | (set_dirty ? 1u << B_SAVE : 0u) | (tp_capturing ? 1u << B_REC : 0u),
+              0);
 }
 
 void app_input_only(void) { input(); }
@@ -359,6 +380,30 @@ static void reel(int32_t cx, int32_t cy, int32_t pack, float a)
     }
 }
 
+/* the tape gauge: the loop laid out flat, its oxide amber where it holds and dark where it has come off, the head a
+ * white line; while capturing, the recorded part fills in behind the head */
+static void gauge(int32_t gx, int32_t gy, int32_t gw, int32_t gh)
+{
+    uint32_t len = tp_loop_len, ncell = (len + TP_CELL - 1u) / TP_CELL, pos = tp_loop_pos;
+    int32_t i, head = gx + (int32_t)(pos * (uint32_t)gw / (len ? len : 1u))   /* < 2^26: 32 bits do */;
+    cv_rect(gx - 1, gy - 1, gw + 2, gh + 2, C_LINE);
+    for (i = 0; i < gw; i++) {
+        uint32_t a = (uint32_t)i * ncell / (uint32_t)gw, b = (uint32_t)(i + 1) * ncell / (uint32_t)gw, d = 0;
+        uint16_t c;
+        if (b <= a)
+            b = a + 1u;
+        for (; a < b && a < TP_NCELL; a++)
+            if (tp_damage[a] > d)
+                d = tp_damage[a];
+        if (tp_capturing && gx + i > head)
+            c = C_BLACK;                 /* not yet recorded */
+        else
+            c = d > 150u ? C_BLACK : d > 60u ? C_LINE : d > 8u ? C_DIM : C_AMB;
+        cv_rect(gx + i, gy, 1, gh, c);
+    }
+    cv_rect(head, gy - 3, 1, gh + 6, C_WHITE);
+}
+
 static void draw(void)
 {
     char t[40], n[12];
@@ -389,7 +434,7 @@ static void draw(void)
     /* the tape: a shell (or two open reels), the reels turning with the transport's wobble */
     cv_begin(240, 156, C_BLACK);
     {
-        int32_t cy = 58, sep = big ? 112 : small ? 64 : 84, pack = big ? 46 : small ? 22 : 30,
+        int32_t cy = 52, sep = big ? 112 : small ? 64 : 84, pack = big ? 46 : small ? 22 : 30,
                 lx = 120 - sep / 2, rx = 120 + sep / 2;
         float fill = 0.5f + 0.5f * fm_sin_turns(turns * 0.002f);   /* the tape winding from one side to the other */
         int32_t pl = 13 + (int32_t)((float)(pack - 13) * fill), pr = 13 + (int32_t)((float)(pack - 13) * (1.0f - fill));
@@ -402,17 +447,28 @@ static void draw(void)
         reel(lx, cy, pl, turns);
         reel(rx, cy, pr, turns);
         cv_line(lx, cy + pl, rx, cy + pr, drop > 0.2f ? C_DIM : C_GRAY);   /* the tape between them */
+        (void)n;
         if (drop > 0.2f)
             cv_rect(118, cy + (pl + pr) / 2 - 3, 4, 6, C_WHITE);             /* a dropout, as it passes */
     }
-    cv_text(120 - text_w(&FONT_B, TP_SCENE_NAME[set.scene]) / 2, 114, &FONT_B, TP_SCENE_NAME[set.scene], C_HI);
+    gauge(10, 110, 220, 12);
     t[0] = 0;
-    text_cat(t, "WEAR ");
+    text_cat(t, TP_SCENE_NAME[set.scene]);
+    cv_text(10, 130, &FONT_B, t, C_HI);
+    t[0] = 0;
+    if (tp_capturing) {
+        text_cat(t, "CAPTURING");
+    } else {
+        int_text((int32_t)tp_passes, n);
+        text_cat(t, n);
+        text_cat(t, tp_passes == 1u ? " PASS" : " PASSES");
+    }
+    text_cat(t, "  WEAR ");
     int_text(wear_pct(), n);
     text_cat(t, n);
     if (!set.playing)
-        text_cat(t, "   STOPPED");
-    cv_text(120 - text_w(&FONT_XS, t) / 2, 136, &FONT_XS, t, C_GRAY);
+        text_cat(t, "  STOP");
+    cv_text(230 - text_w(&FONT_XS, t), 133, &FONT_XS, t, C_GRAY);
     cv_blit(0, 30);
 
     cv_begin(240, 52, C_BLACK);
@@ -421,11 +477,13 @@ static void draw(void)
         int32_t k = ui.page * 4 + i;
         x = 4 + i * 57;
         int_text(set.k[k], t);
+        if (k == K_LENGTH)
+            text_cat(t, "S");
         cv_text(x, 8, &FONT_XS, KNOB_NAME[k], C_GRAY);
         cv_text(x, 24, &FONT_B, t, C_HI);
     }
-    cv_rect(226, 12, 6, 6, ui.page ? C_LINE : C_GRAY);
-    cv_rect(226, 26, 6, 6, ui.page ? C_GRAY : C_LINE);
+    for (i = 0; i < NPAGES; i++)          /* which page: three dots, SELECT turns */
+        cv_rect(228, 8 + 13 * i, 5, 5, ui.page == i ? C_GRAY : C_LINE);
     cv_blit(0, 188);
 }
 
@@ -485,7 +543,18 @@ int app_expect(const char *what, int *got)
         *got = (int)tp_drops;
     else if (!strcmp(what, "drags"))
         *got = (int)tp_drags;
-    else if (!strcmp(what, "chord"))
+    else if (!strcmp(what, "passes"))
+        *got = (int)tp_passes;
+    else if (!strcmp(what, "capturing"))
+        *got = tp_capturing;
+    else if (!strcmp(what, "loop_len"))
+        *got = (int)tp_loop_len;
+    else if (!strcmp(what, "damage")) {   /* the damage map's sum */
+        uint32_t i, sum = 0;
+        for (i = 0; i < TP_NCELL; i++)
+            sum += tp_damage[i];
+        *got = (int)sum;
+    } else if (!strcmp(what, "chord"))
         *got = tp_chord;
     else if (!strcmp(what, "peak")) {    /* the output's peak since last read, thousandths */
         *got = (int)(tp_peak * 1000.0f);

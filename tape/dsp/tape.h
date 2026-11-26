@@ -31,6 +31,14 @@ typedef struct {
     float space;                       /* 0..1: the room */
     float drive;                       /* 0..1: how hard the music hits the tape */
     float pads, bells, flute, nature;  /* 0..1 each: levels */
+    /* v2: the loop. The machine records its own output onto a loop of tape that wears a little more every pass,
+     * always in the same places, until only hiss and fragments are left (after William Basinski's Disintegration
+     * Loops). */
+    float basinski;                    /* 0..1: what you hear, from the live machine to the loop alone */
+    float feed;                        /* 0..1: how much new music goes onto the loop each pass (0: it only decays) */
+    float decay;                       /* 0..1: how fast it disintegrates */
+    float length;                      /* the loop, seconds (TP_LOOP_MIN .. tp_loop_max()) */
+    uint8_t capture;                   /* a count: each change starts a fresh loop */
 } tp_cfg_t;
 
 extern volatile tp_cfg_t tp_cfg;
@@ -40,6 +48,19 @@ extern const char *const TP_SCENE_NAME[TP_NSCENES];
 void tp_init(void);
 void tp_render(int32_t *lr, uint32_t n, float gain);   /* n stereo frames, 24-bit; gain 0..1 */
 void tp_panic(void);
+
+/* the loop: mono, 8-bit mu-law at 14.7 kHz, in the pool; its damage in cells of TP_CELL samples */
+#define TP_LOOP_BYTES 262144u
+#define TP_LOOP_DIV 3u                 /* 44.1 kHz / 3 */
+#define TP_CELL 256u
+#define TP_NCELL (TP_LOOP_BYTES / TP_CELL)
+#define TP_LOOP_MIN 2.0f
+float tp_loop_max(void);               /* seconds: the whole loop */
+extern uint8_t tp_damage[TP_NCELL];    /* each cell's damage, 0..255: it only grows, until a capture */
+extern volatile uint32_t tp_loop_pos;  /* the head, bytes */
+extern volatile uint32_t tp_loop_len;  /* the loop in use, bytes */
+extern volatile uint32_t tp_passes;    /* times round since the capture */
+extern volatile uint8_t tp_capturing;  /* 1: recording the first pass */
 
 /* for the screen and the tests */
 extern volatile float tp_speed;        /* the tape's speed now, 1 = nominal (wow, flutter, drag) */
