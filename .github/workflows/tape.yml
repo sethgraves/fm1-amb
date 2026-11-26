@@ -36,3 +36,36 @@ jobs:
         mkdir -p build/host-run
         tape/build/host/tape_host tape/tests/basic.txt build/host-run
       packages: build/out/*
+
+  # the browser emulator (fm1-base tools/build.py --web), pushed to the tape-emu branch for previews
+  emulator:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the emulator
+        run: |
+          set -euo pipefail
+          python3 -m pip install -q Pillow
+          sudo apt-get install -y -qq libfribidi0
+          git clone -q https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          git -C "$RUNNER_TEMP/emsdk" checkout -q a2b92777574c2feda07994cd4f1079a3dfc151f8   # emsdk 6.0.10
+          "$RUNNER_TEMP/emsdk/emsdk" install 6.0.10
+          "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.10
+          set +u; source "$RUNNER_TEMP/emsdk/emsdk_env.sh"; set -u
+          python3 base/tools/build.py tape --web
+          ls -la tape/build/emu
+      - name: Push it to tape-emu
+        run: |
+          set -euo pipefail
+          cd tape/build/emu
+          git init -q -b tape-emu
+          git -c user.name=github-actions -c user.email=actions@github.com add -A
+          git -c user.name=github-actions -c user.email=actions@github.com commit -q -m "emulator from ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" tape-emu
