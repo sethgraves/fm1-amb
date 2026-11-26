@@ -44,23 +44,42 @@ static float onepole(float hz) { return 1.0f - fm_exp2f(-6.2831853f * 1.442695f 
 static float decay(float s) { return fm_exp2f(-1.442695f / (s * TP_SR)); }                      /* per sample, to 1/e in s */
 
 /* --------------------------------------------------------------- scenes --- */
-/* a key (root, MIDI), a tempo, four chords (four pitch classes each from the root, and a bass), and a scale */
+/* A scene is a whole arrangement, not just a key: its chords and how long each lasts, how fast the pads glide and
+ * how bright they are, where the bells play and what they sound like, how busy the bells and the flute are, and how
+ * far forward the stream comes. */
 typedef struct {
     uint8_t root, bpm;
+    uint8_t nchord, bars;              /* chords in the cycle (1: one held chord), bars of 4/4 each */
     int8_t chord[4][4], bass[4];
     uint8_t nscale;
     int8_t scale[7];
+    float glide_s;                     /* the pads' glide to a new chord, seconds */
+    float pad_hz;                      /* the pads' brightness (their filter, Hz) */
+    float pad_lvl;                     /* the pads' level, against the defaults */
+    uint8_t sixteenths;                /* 1: the bells step in sixteenths */
+    uint8_t bell_lo, bell_hi;          /* the bells' register, MIDI */
+    float bell_ratio, bell_index, bell_s;   /* their FM: 2 a warm bell, 1 a soft pluck; brightness; ring, seconds */
+    float bell_busy;                   /* how often a bell plays a step, against DENSITY */
+    uint8_t bell_random;               /* 1: any scale note, scattered (drops), not an arpeggio */
+    float flute_busy;                  /* how often the flute starts a phrase */
+    float nature_lift;                 /* the stream's level, against NATURE */
+    int8_t pad_shift;                  /* the pads' register, semitones from the middle */
 } scene_t;
 
 static const scene_t SCENES[TP_NSCENES] = {
-    /* GLIDE: D lydian. Dmaj7, E/D, Bm7, Gmaj7 */
-    {50, 66, {{0, 4, 7, 11}, {2, 6, 9, 0}, {9, 0, 4, 7}, {5, 9, 0, 4}}, {0, 0, 9, 5}, 7, {0, 2, 4, 6, 7, 9, 11}},
-    /* SUNROOM: F major. Fmaj9, Am7, Bbmaj7#11, Csus2 */
-    {53, 72, {{0, 4, 7, 2}, {4, 7, 11, 2}, {5, 9, 4, 11}, {7, 9, 2, 4}}, {0, 4, 5, 7}, 7, {0, 2, 4, 5, 7, 9, 11}},
-    /* MEMORY: A dorian. Am9, Fmaj7, G6, Em7 */
-    {45, 60, {{0, 3, 10, 2}, {8, 0, 3, 7}, {10, 2, 5, 7}, {7, 10, 2, 5}}, {0, 8, 10, 7}, 7, {0, 2, 3, 5, 7, 9, 10}},
-    /* RIVER: Eb major pentatonic. Ebadd9, Abmaj7, Cm7, Bb7sus4 */
-    {51, 54, {{0, 4, 7, 2}, {5, 9, 0, 4}, {9, 0, 4, 7}, {7, 0, 2, 5}}, {0, 5, 9, 7}, 5, {0, 2, 4, 7, 9}},
+    /* GLIDE: D lydian, floating. The pads lead with long glides; the bells are few. */
+    {50, 66, 4, 4, {{0, 4, 7, 11}, {2, 6, 9, 0}, {9, 0, 4, 7}, {5, 9, 0, 4}}, {0, 0, 9, 5}, 7, {0, 2, 4, 6, 7, 9, 11},
+     4.0f, 1300.0f, 1.15f, 0, 66, 88, 2.0f, 1.0f, 2.6f, 0.45f, 0, 0.6f, 0.7f, 0},
+    /* SUNROOM: F major, bright and moving. Quicker chords, the bells running high in sixteenths, the flute out
+     * front. */
+    {53, 84, 4, 2, {{0, 4, 7, 2}, {4, 7, 11, 2}, {5, 9, 4, 11}, {7, 9, 2, 4}}, {0, 4, 5, 7}, 7, {0, 2, 4, 5, 7, 9, 11},
+     1.0f, 2600.0f, 0.85f, 1, 72, 96, 2.0f, 1.8f, 1.6f, 0.75f, 0, 2.5f, 0.6f, 4},
+    /* MEMORY: A minor (dorian), low and slow. Dark pads, the bells a soft low pluck with a long ring, long chords. */
+    {45, 52, 4, 8, {{0, 3, 10, 2}, {8, 0, 3, 7}, {10, 2, 5, 7}, {7, 10, 2, 5}}, {0, 8, 10, 7}, 7, {0, 2, 3, 5, 7, 9, 10},
+     2.5f, 750.0f, 1.2f, 0, 52, 72, 1.0f, 0.7f, 4.5f, 0.5f, 0, 0.5f, 0.5f, -7},
+    /* RIVER: Eb pentatonic, one chord held for good. The bells fall as scattered drops; the stream comes forward. */
+    {51, 60, 1, 4, {{0, 4, 7, 2}}, {0}, 5, {0, 2, 4, 7, 9},
+     3.0f, 1000.0f, 0.8f, 0, 70, 94, 3.0f, 0.6f, 1.2f, 1.0f, 1, 0.4f, 1.8f, 0},
 };
 
 /* ----------------------------------------------------------- tape types --- */
@@ -179,8 +198,9 @@ static void pads_to(const scene_t *s, int c)   /* the chord's tones, each voice 
 {
     int v;
     for (v = 0; v < NPAD; v++)
-        pads[v].target = (float)nearest(pads[v].target, s->chord[c][v], s->root, 52 + 3 * v, 66 + 3 * v);
-    bass_target = (float)nearest(bass_target, s->bass[c], s->root, 36, 48);
+        pads[v].target = (float)nearest(pads[v].target, s->chord[c][v], s->root, 52 + 3 * v + s->pad_shift,
+                                        66 + 3 * v + s->pad_shift);
+    bass_target = (float)nearest(bass_target, s->bass[c], s->root, 36 + (s->pad_shift < 0 ? -3 : 0), 48);
 }
 
 /* ----------------------------------------------------------------- bells --- */
@@ -191,6 +211,7 @@ typedef struct {
 } bell_t;
 static bell_t bells[NBELL];
 
+static const scene_t *bell_scene;
 static void bell_on(const ev_t *e)
 {
     int i, pick = 0;
@@ -207,10 +228,10 @@ static void bell_on(const ev_t *e)
         b->ph = 0.0f;
         b->mph = 0.0f;
         b->inc = f / TP_SR;
-        b->minc = 2.0f * f / TP_SR;    /* 2:1, a warm bell, almost a struck string */
+        b->minc = bell_scene->bell_ratio * f / TP_SR;   /* 2:1 a warm bell; 1:1 a soft pluck; 3:1 glassy */
         b->amp = e->vel;
-        b->dec = decay(e->ghost ? 1.2f : 2.6f);
-        b->idx = e->ghost ? 0.4f : 1.0f + 2.5f * e->vel;
+        b->dec = decay(e->ghost ? 0.45f * bell_scene->bell_s : bell_scene->bell_s);
+        b->idx = e->ghost ? 0.4f : bell_scene->bell_index * (1.0f + 2.5f * e->vel);
         b->idec = decay(0.35f);
         b->att = 0.0f;
         b->pan = e->pan;
@@ -534,10 +555,10 @@ static void scene_start(int s)
 static int bell_pitches(const scene_t *s, int c, int *out)
 {
     int n = 0, o, i;
-    for (o = 0; o < 3; o++)
+    for (o = -1; o < 4; o++)
         for (i = 0; i < 4; i++) {
             int m = s->root + 24 + o * 12 + s->chord[c][i];
-            if (m >= 64 && m <= 93)
+            if (m >= s->bell_lo && m <= s->bell_hi && n < 24)
                 out[n++] = m;
         }
     for (i = 1; i < n; i++) {          /* sorted, rising */
@@ -564,15 +585,24 @@ static int scale_note(const scene_t *s, int deg)        /* a scale degree from t
 /* one eighth-note step, planned LOOK ahead */
 static void gen_step(const scene_t *s, float density, float bells_on, float flute_on_lvl)
 {
-    uint32_t t = now + LOOK;
-    int bp[12], nb, beat = (int)(step_n % 8u) == 0;
-    if (step_n % 32u == 0u && step_n) {                /* four bars of 4/4 in eighths: the next chord */
-        cur_chord = (uint8_t)((cur_chord + 1u) % 4u);
+    uint32_t t = now + LOOK, per_bar = s->sixteenths ? 16u : 8u, per_chord = per_bar * s->bars;
+    int bp[24], nb, beat = (int)(step_n % (per_bar / 2u)) == 0;
+    if (step_n % per_chord == 0u && step_n && s->nchord > 1u) {   /* the next chord */
+        cur_chord = (uint8_t)((cur_chord + 1u) % s->nchord);
         pads_to(s, cur_chord);
     }
     tp_chord = cur_chord;
     nb = bell_pitches(s, cur_chord, bp);
-    if (bells_on > 0.01f && nb && rndf() < density * (beat ? 0.85f : 0.45f)) {
+    if (s->bell_random) {                              /* drops: any scale note in the register, scattered */
+        if (bells_on > 0.01f && rndf() < density * s->bell_busy * (beat ? 0.7f : 0.35f)) {
+            int deg = (int)(rnd() % (uint32_t)(s->nscale * 2)), m = scale_note(s, deg) + 12;
+            while (m < s->bell_lo)
+                m += 12;
+            while (m > s->bell_hi)
+                m -= 12;
+            plan(t + (rnd() & 2047u), EV_BELL, (float)m, (0.3f + 0.7f * rndf()) * 0.2f, rnds() * 0.9f, 0.0f);
+        }
+    } else if (bells_on > 0.01f && nb && rndf() < density * s->bell_busy * (beat ? 1.3f : 0.7f)) {
         int jump = (int)(rnd() % 5u) - 2;
         if (jump == 0)
             jump = 1;
@@ -580,11 +610,12 @@ static void gen_step(const scene_t *s, float density, float bells_on, float flut
         if (bell_idx < 0)
             bell_idx = 1;
         if (bell_idx >= nb)
-            bell_idx = nb - 2;
+            bell_idx = nb > 1 ? nb - 2 : 0;
         {
             float note = (float)bp[bell_idx];
             if (rndf() < 0.15f)                        /* now and then a passing tone from the scale */
-                note = (float)nearest(note + 2.0f * (float)jump, s->scale[rnd() % s->nscale], s->root, 64, 93);
+                note = (float)nearest(note + 2.0f * (float)jump, s->scale[rnd() % s->nscale], s->root, s->bell_lo,
+                                      s->bell_hi);
             plan(t, EV_BELL, note, (0.35f + 0.65f * rndf()) * 0.22f, rnds() * 0.7f, 0.0f);
         }
     }
@@ -604,7 +635,8 @@ static void gen_step(const scene_t *s, float density, float bells_on, float flut
             plan(t, EV_FLUTE, flute_note, 0.16f, rnds() * 0.4f, dur * 0.95f);
             flute_left--;
             flute_next = t + (uint32_t)(dur * TP_SR);
-        } else if (!flute_left && (int32_t)(t - flute_next) >= 0 && rndf() < flute_on_lvl * density * 0.03f) {
+        } else if (!flute_left && (int32_t)(t - flute_next) >= 0
+                   && rndf() < flute_on_lvl * density * 0.03f * s->flute_busy) {
             flute_left = 2u + rnd() % 4u;
             flute_next = t;
             flute_note = (float)scale_note(s, 14 + (int)(rnd() % 5u));
@@ -756,6 +788,7 @@ void tp_init(void)
         tape_l[i] = tape_r[i] = 0;
     for (i = 0; i < NEV; i++)
         evq[i].kind = EV_NONE;
+    bell_scene = &SCENES[0];
     scene_start(tp_cfg.scene);
     deck_target(&DECKS[tp_cfg.type], tp_cfg.age, tp_cfg.drive);
     glide_deck(1);
@@ -777,7 +810,7 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
     float fb = 0.70f + 0.24f * c.space, wet = c.space * 0.55f, damp = onepole(lerp(5500.0f, 3200.0f, c.space)),
           beat_n = 60.0f / 2.0f * TP_SR;
     float a_lp, a_lpd, a_hp, a_az, a_hiss, pad_a = c.pads * 0.11f, bass_a = c.pads * 0.05f, pk = 0.0f;
-    float inc_pad[NPAD][2], inc_bass, sat_norm;
+    float inc_pad[NPAD][2], inc_bass, sat_norm, glide_k;
 
     if (c.scene != cur_scene && c.scene < TP_NSCENES)
         scene_start(c.scene);
@@ -793,7 +826,13 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
         tp_loop_len = len;
     }
     s = &SCENES[cur_scene];
+    bell_scene = s;
     beat_n /= (float)s->bpm;                           /* samples an eighth */
+    if (s->sixteenths)
+        beat_n *= 0.5f;
+    glide_k = 1.0f - fm_exp2f(-(float)n / TP_SR * 1.442695f / (s->glide_s * 0.45f));   /* most of it in glide_s */
+    pad_a *= s->pad_lvl;
+    bass_a *= s->pad_lvl;
 
     /* the plan: steps due now (LOOK ahead), then the events due this block */
     while ((int32_t)(now - step_next) >= 0) {
@@ -840,7 +879,7 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
     for (k = 0; k < NPAD; k++) {
         pad_t *p = &pads[k];
         int o;
-        p->pitch += (p->target - p->pitch) * 0.0035f;     /* ~1.6 s to arrive: the glide */
+        p->pitch += (p->target - p->pitch) * glide_k;     /* the glide: the scene's time */
         for (o = 0; o < 2; o++) {
             p->dv[o] += (rnds() * 0.05f - p->dv[o]) * 0.01f;
             p->drift[o] = fm_clampf(p->drift[o] + p->dv[o], -9.0f, 9.0f);
@@ -853,12 +892,12 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
     }
     flute_block(&flutes[0], n);
     flute_block(&flutes[1], n);
-    bass_pitch += (bass_target - bass_pitch) * 0.0035f;
+    bass_pitch += (bass_target - bass_pitch) * glide_k;
     inc_bass = mtof(bass_pitch) / TP_SR;
     pad_cut_ph += 0.021f * (float)n / TP_SR;
     if (pad_cut_ph >= 1.0f)
         pad_cut_ph -= 1.0f;
-    pad_cut = 1300.0f + 500.0f * fm_sin_turns(pad_cut_ph);
+    pad_cut = s->pad_hz * (1.0f + 0.35f * fm_sin_turns(pad_cut_ph));
     {
         float a_pc = onepole(pad_cut);
         /* motor drag: now and then the motor labours and the pitch sags, then catches up */
@@ -915,7 +954,7 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
             r *= music;
             if (c.nature > 0.01f) {
                 float nl = 0.0f, nr = 0.0f;
-                nature_tick(c.nature * music, &nl, &nr);
+                nature_tick(fm_minf(c.nature * s->nature_lift, 1.5f) * music, &nl, &nr);
                 l += nl;
                 r += nr;
             }

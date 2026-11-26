@@ -5,8 +5,11 @@ Matthewdavid's *Trust the Guide and Glide*. There is no clean signal and no bypa
 room, recorded onto a tape and played back, and the tape is part of the instrument.
 
 **The music.** Warm pads of detuned saws that glide from chord to chord, soft FM bells arpeggiating the chord, a
-breathy flute that plays a short phrase now and then, and a stream with drops and birds. Four scenes, each a key and
-a slow progression: GLIDE (D lydian), SUNROOM (F major), MEMORY (A dorian), RIVER (Eb pentatonic). The flute and
+breathy flute that plays a short phrase now and then, and a stream with drops and birds. Four scenes, each a whole
+arrangement on ALGORITHM: GLIDE (D lydian: the pads lead, long glides, few bells), SUNROOM (F major: brighter, quicker
+chords, bells running high in sixteenths, the flute out front), MEMORY (A dorian: low, dark pads, the bells a soft
+low pluck with a long ring, long chords), RIVER (Eb pentatonic: one held chord, the bells falling as scattered drops,
+the stream forward). The flute and
 the nature are synthesised, not samples.
 
 **The tape.** Saturation and head bump on the way in. Wow, flutter, motor drag and head misalignment in the
