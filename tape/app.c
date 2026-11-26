@@ -11,7 +11,9 @@
  *               the third, the loop: K1 BASINSKI (from the machine to the loop), K2 FEED (new music onto it each
  *               pass), K3 LENGTH (seconds), K4 DECAY (how fast it disintegrates)
  *   REC         CAPTURE: a fresh loop, recorded from the machine (lit while it records the first pass)
- *   OCT- OCT+   the tuning, A = 415 .. 446 Hz a hertz at a time (432 by default)
+ *               the fourth, SETUP: K1 KEY (SCENE: each scene its own; or a flute's key, C .. B: every scene moves
+ *               so the flute's minor pentatonic sits in it), K2 TUNE (A = 415 .. 446 Hz, 432 by default)
+ *   OCT- OCT+   the tuning too, a hertz at a time
  *   HOME (hold) the tape's wear back to new
  *   SAVE        keeps the settings for the next power-on
  *   MASTER      volume
@@ -23,14 +25,15 @@
 #include "fastmath.h"
 #include "tape.h"
 
-#define SET_MAGIC 0x54505632u            /* "TPV2" */
+#define SET_MAGIC 0x54505633u            /* "TPV3" */
 enum { K_AGE, K_DENSITY, K_SPACE, K_DRIVE, K_PADS, K_BELLS, K_FLUTE, K_NATURE, K_BASINSKI, K_FEED, K_LENGTH,
-       K_DECAY, NK };
-#define NPAGES 3
+       K_DECAY, K_KEY, K_TUNE, NK };
+#define NPAGES 4
 typedef struct {
     uint32_t magic;
-    uint8_t playing, type, scene, tune;  /* tune: A above middle C less 400 Hz (0: an older record, 432) */
-    int8_t k[NK];                        /* 0..100 each */
+    uint8_t playing, type, scene, rsv;
+    int8_t k[NK];                        /* 0..100 each; LENGTH seconds; KEY 0 (the scene's) .. 12; TUNE A less 400 Hz */
+    uint8_t rsv2[2];
 } settings_t;
 static settings_t set;
 static uint8_t set_dirty;
@@ -43,13 +46,14 @@ typedef struct {
 static wear_t wear;
 static uint32_t wear_saved;              /* the seconds the flash has */
 
-static const int8_t K_DEF[NK] = {30, 50, 50, 40, 80, 60, 40, 30, 0, 0, 12, 40};
+static const int8_t K_DEF[NK] = {30, 50, 50, 40, 80, 60, 40, 30, 0, 0, 12, 40, 0, 32};
 static const char *const KNOB_NAME[NK] = {"AGE", "DENSITY", "SPACE", "DRIVE", "PADS", "BELLS", "FLUTE", "NATURE",
-                                          "BASINSKI", "FEED", "LENGTH", "DECAY"};
+                                          "BASINSKI", "FEED", "LENGTH", "DECAY", "KEY", "TUNE"};
+static const char *const KEY_NAME[13] = {"SCENE", "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
 /* each knob's range and step a detent: LENGTH in seconds, the rest 0..100 */
-static int32_t k_lo(int k) { return k == K_LENGTH ? 2 : 0; }
-static int32_t k_hi(int k) { return k == K_LENGTH ? 17 : 100; }
-static int32_t k_step(int k) { return k == K_LENGTH ? 1 : 2; }
+static int32_t k_lo(int k) { return k == K_LENGTH ? 2 : k == K_TUNE ? 15 : 0; }
+static int32_t k_hi(int k) { return k == K_LENGTH ? 17 : k == K_KEY ? 12 : k == K_TUNE ? 46 : 100; }
+static int32_t k_step(int k) { return k == K_LENGTH || k == K_KEY || k == K_TUNE ? 1 : 2; }
 
 static void settings_defaults(void)
 {
@@ -58,7 +62,6 @@ static void settings_defaults(void)
     set.playing = 1;
     set.type = TP_CASSETTE;
     set.scene = 0;
-    set.tune = 32;
     for (i = 0; i < NK; i++)
         set.k[i] = K_DEF[i];
 }
@@ -67,10 +70,8 @@ static int settings_ok(void)
 {
     int i;
     if (set.magic != SET_MAGIC || set.playing > 1u || set.type >= TP_NTYPES || set.scene >= TP_NSCENES
-        || (set.tune && (set.tune < 15u || set.tune > 46u)))
+)
         return 0;
-    if (!set.tune)
-        set.tune = 32;
     for (i = 0; i < NK; i++)
         if (set.k[i] < k_lo(i) || set.k[i] > k_hi(i))
             return 0;
@@ -109,7 +110,8 @@ static void engine_push(void)
     tp_cfg.feed = (float)set.k[K_FEED] * 0.01f;
     tp_cfg.length = (float)set.k[K_LENGTH];
     tp_cfg.decay = (float)set.k[K_DECAY] * 0.01f;
-    tp_cfg.a4 = 400.0f + (float)set.tune;
+    tp_cfg.a4 = 400.0f + (float)set.k[K_TUNE];
+    tp_cfg.key = (uint8_t)set.k[K_KEY];
 }
 
 static void text_cat(char *d, const char *s);
@@ -119,7 +121,7 @@ static void tune_text(char *t)           /* "A = 432" */
     char n[8];
     t[0] = 0;
     text_cat(t, "A = ");
-    int_text(400 + set.tune, n);
+    int_text(400 + set.k[K_TUNE], n);
     text_cat(t, n);
 }
 
@@ -205,6 +207,21 @@ void app_say(const char *a, const char *b)
     }
 }
 
+/* a knob's value as text: LENGTH in seconds, KEY a note (or SCENE), TUNE in hertz */
+static void value_text(int k, char *t, int words)
+{
+    t[0] = 0;
+    if (k == K_KEY) {
+        text_cat(t, KEY_NAME[set.k[k] % 13]);
+        if (words && set.k[k])
+            text_cat(t, " FLUTE");
+        return;
+    }
+    int_text(k == K_TUNE ? 400 + set.k[k] : set.k[k], t);
+    if (k == K_LENGTH)
+        text_cat(t, words ? " S" : "S");
+}
+
 /* ---------------------------------------------------------------- input --- */
 static void knob_turn(int k, int32_t e)
 {
@@ -215,9 +232,7 @@ static void knob_turn(int k, int32_t e)
         set_dirty = 1;
         engine_push();
     }
-    int_text(set.k[k], t);
-    if (k == K_LENGTH)
-        text_cat(t, " S");
+    value_text(k, t, 1);
     app_say(KNOB_NAME[k], t);
 }
 
@@ -254,9 +269,9 @@ static void input(void)
             }
         } else if (k == B_OCTDN || k == B_OCTUP) {
             char t[12];
-            int32_t v = clamp((int32_t)set.tune + (k == B_OCTUP ? 1 : -1), 15, 46);
-            if (v != set.tune) {
-                set.tune = (uint8_t)v;
+            int32_t v = clamp((int32_t)set.k[K_TUNE] + (k == B_OCTUP ? 1 : -1), 15, 46);
+            if (v != set.k[K_TUNE]) {
+                set.k[K_TUNE] = (int8_t)v;
                 set_dirty = 1;
                 engine_push();
             }
@@ -295,7 +310,7 @@ static void input(void)
         app_say(TP_SCENE_NAME[set.scene], "");
     }
     if ((e = plat_enc(EN_SELECT)) != 0) {
-        static const char *const PAGE[NPAGES] = {"PAGE 1", "PAGE 2", "LOOP"};
+        static const char *const PAGE[NPAGES] = {"PAGE 1", "PAGE 2", "LOOP", "SETUP"};
         ui.page = (uint8_t)clamp((int32_t)ui.page + (e > 0 ? 1 : -1), 0, NPAGES - 1);
         app_say(PAGE[ui.page], "");
     }
@@ -303,9 +318,9 @@ static void input(void)
         knob_turn(ui.page * 4 + 0, e);
     if ((e = plat_enc(EN_K2)) != 0)
         knob_turn(ui.page * 4 + 1, e);
-    if ((e = plat_enc(EN_K3)) != 0)
+    if ((e = plat_enc(EN_K3)) != 0 && ui.page * 4 + 2 < NK)
         knob_turn(ui.page * 4 + 2, e);
-    if ((e = plat_enc(EN_K4)) != 0)
+    if ((e = plat_enc(EN_K4)) != 0 && ui.page * 4 + 3 < NK)
         knob_turn(ui.page * 4 + 3, e);
     if (btn != ui.btn)
         ui.redraw = 1;
@@ -484,7 +499,12 @@ static void draw(void)
     gauge(10, 110, 220, 12);
     t[0] = 0;
     text_cat(t, TP_SCENE_NAME[set.scene]);
-    cv_text(10, 130, &FONT_B, t, C_HI);
+    x = cv_text(10, 130, &FONT_B, t, C_HI);
+    if (set.k[K_KEY]) {                  /* for a flute: its key */
+        t[0] = 0;
+        text_cat(t, KEY_NAME[set.k[K_KEY] % 13]);
+        cv_text(x + 6, 133, &FONT_XS, t, C_AMB);
+    }
     t[0] = 0;
     if (tp_capturing) {
         text_cat(t, "CAPTURING");
@@ -506,14 +526,14 @@ static void draw(void)
     for (i = 0; i < 4; i++) {
         int32_t k = ui.page * 4 + i;
         x = 4 + i * 57;
-        int_text(set.k[k], t);
-        if (k == K_LENGTH)
-            text_cat(t, "S");
+        if (k >= NK)
+            break;
+        value_text(k, t, 0);
         cv_text(x, 8, &FONT_XS, KNOB_NAME[k], C_GRAY);
         cv_text(x, 24, &FONT_B, t, C_HI);
     }
     for (i = 0; i < NPAGES; i++)          /* which page: three dots, SELECT turns */
-        cv_rect(228, 8 + 13 * i, 5, 5, ui.page == i ? C_GRAY : C_LINE);
+        cv_rect(228, 4 + 11 * i, 5, 5, ui.page == i ? C_GRAY : C_LINE);
     cv_blit(0, 188);
 }
 
@@ -574,7 +594,9 @@ int app_expect(const char *what, int *got)
     else if (!strcmp(what, "drags"))
         *got = (int)tp_drags;
     else if (!strcmp(what, "tune"))
-        *got = 400 + set.tune;
+        *got = 400 + set.k[K_TUNE];
+    else if (!strcmp(what, "key"))
+        *got = set.k[K_KEY];
     else if (!strcmp(what, "passes"))
         *got = (int)tp_passes;
     else if (!strcmp(what, "capturing"))

@@ -28,10 +28,15 @@ bells and flute a tape-wrap before and after them (the machine plans its notes a
 | SELECT | Page 2: K1 PADS, K2 BELLS, K3 FLUTE, K4 NATURE (levels) |
 | SELECT | Page 3, the loop: K1 BASINSKI, K2 FEED, K3 LENGTH, K4 DECAY |
 | REC | CAPTURE: a fresh loop, recorded from the machine (lit while it records the first pass) |
-| OCT- / OCT+ | The tuning, A = 415 to 446 Hz a hertz at a time (432 by default) |
+| SELECT | Page 4, SETUP: K1 KEY (SCENE, or a flute's key, C to B), K2 TUNE (A = 415 to 446 Hz, 432 by default) |
+| OCT- / OCT+ | The tuning too, a hertz at a time |
 | HOME (hold 2 s) | The tape's wear back to new |
 | SAVE | Keeps the settings for the next power-on |
 | MASTER | Volume |
+
+**Playing along.** Set KEY to a native-style flute's key and every scene moves so that the flute's minor
+pentatonic sits inside it: GLIDE, SUNROOM and RIVER to the major a minor third up (a B flute: D), MEMORY to the
+flute's own key (B minor). TUNE matches the flute's pitch (432 by default). The key shows beside the scene's name.
 
 **The loop (v2).** After William Basinski's *Disintegration Loops*: the machine records its own output onto a loop
 (2 to 17 seconds, mono, 8-bit at 14.7 kHz) and plays it round, and every pass the oxide comes off a little more,

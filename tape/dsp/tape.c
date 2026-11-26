@@ -11,7 +11,7 @@
 #endif
 
 volatile tp_cfg_t tp_cfg = {1, TP_CASSETTE, 0, 0.3f, 0.5f, 0.5f, 0.4f, 0.8f, 0.6f, 0.4f, 0.3f,
-                            0.0f, 0.0f, 0.4f, 12.0f, 0, 432.0f};
+                            0.0f, 0.0f, 0.4f, 12.0f, 0, 432.0f, 0};
 volatile float tp_speed = 1.0f, tp_reel_turns, tp_drop, tp_peak;
 volatile uint8_t tp_chord;
 volatile uint32_t tp_notes, tp_ghosts, tp_drops, tp_drags;
@@ -195,13 +195,14 @@ static int nearest(float from, int pc, int root, int lo, int hi)   /* the pitch 
     return best;
 }
 
+static int root_now = 50;              /* the scene's root, MIDI: its own, or moved to the KEY */
 static void pads_to(const scene_t *s, int c)   /* the chord's tones, each voice to its nearest */
 {
     int v;
     for (v = 0; v < NPAD; v++)
-        pads[v].target = (float)nearest(pads[v].target, s->chord[c][v], s->root, 52 + 3 * v + s->pad_shift,
+        pads[v].target = (float)nearest(pads[v].target, s->chord[c][v], root_now, 52 + 3 * v + s->pad_shift,
                                         66 + 3 * v + s->pad_shift);
-    bass_target = (float)nearest(bass_target, s->bass[c], s->root, 36 + (s->pad_shift < 0 ? -3 : 0), 48);
+    bass_target = (float)nearest(bass_target, s->bass[c], root_now, 36 + (s->pad_shift < 0 ? -3 : 0), 48);
 }
 
 /* ----------------------------------------------------------------- bells --- */
@@ -542,11 +543,33 @@ static inline float tape_read(const int16_t *t, float d)
 static uint32_t step_next, step_n, flute_left, flute_next;
 static int bell_idx = 8;
 static float flute_note = 76.0f;
-static uint8_t cur_scene = 255, cur_chord;
+static uint8_t cur_scene = 255, cur_chord, cur_key;
+
+/* the root for a scene in a flute's key: a native-style flute plays the minor pentatonic of its key, which sits in
+ * the major (and lydian, and major pentatonic) a minor third up, and in the dorian on the key itself. The octave
+ * nearest the scene's own root, so its registers stay. */
+static int root_for(int sc, int key)
+{
+    const scene_t *s = &SCENES[sc];
+    int pc, r, best = s->root, bd = 99;
+    if (!key)
+        return s->root;
+    pc = (key - 1 + (sc == 2 ? 0 : 3)) % 12;           /* MEMORY (dorian) on the key; the rest a minor third up */
+    for (r = s->root - 6; r <= s->root + 6; r++)
+        if ((r % 12) == pc) {
+            int d = r > s->root ? r - s->root : s->root - r;
+            if (d < bd) {
+                bd = d;
+                best = r;
+            }
+        }
+    return best;
+}
 
 static void scene_start(int s)
 {
     cur_scene = (uint8_t)s;
+    root_now = root_for(s, cur_key);
     cur_chord = 0;
     step_n = 0;
     pads_to(&SCENES[s], 0);
@@ -558,7 +581,7 @@ static int bell_pitches(const scene_t *s, int c, int *out)
     int n = 0, o, i;
     for (o = -1; o < 4; o++)
         for (i = 0; i < 4; i++) {
-            int m = s->root + 24 + o * 12 + s->chord[c][i];
+            int m = root_now + 24 + o * 12 + s->chord[c][i];
             if (m >= s->bell_lo && m <= s->bell_hi && n < 24)
                 out[n++] = m;
         }
@@ -580,7 +603,7 @@ static int scale_note(const scene_t *s, int deg)        /* a scale degree from t
         k += s->nscale;
         o--;
     }
-    return s->root + 12 * o + s->scale[k];
+    return root_now + 12 * o + s->scale[k];
 }
 
 /* one eighth-note step, planned LOOK ahead */
@@ -615,7 +638,7 @@ static void gen_step(const scene_t *s, float density, float bells_on, float flut
         {
             float note = (float)bp[bell_idx];
             if (rndf() < 0.15f)                        /* now and then a passing tone from the scale */
-                note = (float)nearest(note + 2.0f * (float)jump, s->scale[rnd() % s->nscale], s->root, s->bell_lo,
+                note = (float)nearest(note + 2.0f * (float)jump, s->scale[rnd() % s->nscale], root_now, s->bell_lo,
                                       s->bell_hi);
             plan(t, EV_BELL, note, (0.35f + 0.65f * rndf()) * 0.22f, rnds() * 0.7f, 0.0f);
         }
@@ -790,6 +813,7 @@ void tp_init(void)
     for (i = 0; i < NEV; i++)
         evq[i].kind = EV_NONE;
     bell_scene = &SCENES[0];
+    cur_key = tp_cfg.key <= 12u ? tp_cfg.key : 0u;
     scene_start(tp_cfg.scene);
     deck_target(&DECKS[tp_cfg.type], tp_cfg.age, tp_cfg.drive);
     glide_deck(1);
@@ -813,6 +837,13 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
     float a_lp, a_lpd, a_hp, a_az, a_hiss, pad_a = c.pads * 0.11f, bass_a = c.pads * 0.05f, pk = 0.0f;
     float inc_pad[NPAD][2], inc_bass, sat_norm, glide_k;
 
+    if (c.key <= 12u && c.key != cur_key) {            /* a new key: the scene glides there, on the same chord */
+        cur_key = c.key;
+        if (cur_scene < TP_NSCENES) {
+            root_now = root_for(cur_scene, cur_key);
+            pads_to(&SCENES[cur_scene], cur_chord);
+        }
+    }
     if (c.scene != cur_scene && c.scene < TP_NSCENES)
         scene_start(c.scene);
     a4 = fm_clampf(c.a4, 400.0f, 460.0f);

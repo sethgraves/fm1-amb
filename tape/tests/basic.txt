@@ -133,3 +133,14 @@ tap SAVE
 reboot
 wait 600
 expect tune 432
+# the key: a B flute; every scene moves; back to the scenes' own
+turn SELECT 1
+turn K1 12
+wait 100
+expect key 12
+wav b_flute.wav
+wait 15000
+wavstop
+shot setup.png
+turn K1 -12
+expect key 0

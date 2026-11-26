@@ -40,6 +40,9 @@ typedef struct {
     float length;                      /* the loop, seconds (TP_LOOP_MIN .. tp_loop_max()) */
     uint8_t capture;                   /* a count: each change starts a fresh loop */
     float a4;                          /* the tuning: A above middle C, Hz (432 by default) */
+    uint8_t key;                       /* 0: each scene in its own key; 1..12: a flute's key, C .. B (its minor
+                                        * pentatonic sits inside every scene: the major scenes a minor third up,
+                                        * MEMORY on it) */
 } tp_cfg_t;
 
 extern volatile tp_cfg_t tp_cfg;
