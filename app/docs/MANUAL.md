@@ -4,6 +4,8 @@ DREAM holds pure sine tones in just intonation: every tone a whole-number harmon
 phase, with nothing added. Switch the FM-1 on and the first piece swells in under a magenta glow. Touch any control
 to go straight to the screen.
 
+These pieces were made to sound for hours or days in a room. The few recordings that were released are long out of print, and you can't buy them new today. DREAM lets you keep a version of that sound going at home, for as long as it was meant to last.
+
 ## Playing
 
 - **PLAY** starts and stops the drone. Tones swell in and fade out over a few seconds.

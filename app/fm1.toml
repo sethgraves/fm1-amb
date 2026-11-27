@@ -14,7 +14,7 @@ licence = "MPL-2.0"
 credits = "Built on fm1-base by Charles Vestal and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
 # firmware.json
 author = "Seth Graves"
-description = "A tribute to La Monte Young: pure sine tones tuned in whole-number ratios and held, phase-locked, for as long as the FM-1 is on. Pieces after Composition 1960 No. 7, the Dream House (with its eight bases), the Well-Tuned Piano's Opening and Magic Chords and its tuning, a drift study and Map of 49's Dream (the last two in tones chosen by his stated rules; his own are unpublished). Density, drift and a slowly breathing density. No effects, no samples."
+description = "A tribute to La Monte Young: pure sine tones tuned in whole-number ratios and held, phase-locked, with no effects or samples. Pieces after Composition 1960 No. 7, the Dream House with its eight bases, the Well-Tuned Piano's Opening and Magic Chords and its tuning, a drift study and Map of 49's Dream (the last two in tones chosen by his stated rules). These pieces were made to sound for hours or days; the few recordings released are long out of print, and you can't buy them new. DREAM keeps a version of that sound going for as long as it was meant to last."
 tags = ["synth", "ambient", "generative", "experimental"]
 install = "https://thefirmwarehub.com/"
 site = "https://sethgraves.github.io/fm1-dream/"

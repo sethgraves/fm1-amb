@@ -3,6 +3,8 @@
 Firmware for the M-VAVE FM-1: pure sine tones, tuned as whole-number harmonics of one frequency, held for as long
 as the FM-1 is on. A tribute to La Monte Young, with a look after Marian Zazeela's light.
 
+These pieces were made to sound for hours or days in a room. The few recordings that were released are long out of print, and you can't buy them new today. DREAM lets you keep a version of that sound going at home, for as long as it was meant to last.
+
 - **Try it in your browser** (no FM-1 needed): <https://sethgraves.github.io/fm1-dream/>
 - **Install it**: from [The Firmware Hub](https://thefirmwarehub.com/), or with M-Flasher and the `.fwsc` from
   [the latest release](https://github.com/sethgraves/fm1-dream/releases/latest)
