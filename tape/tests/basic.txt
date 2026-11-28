@@ -67,8 +67,20 @@ tapkey 16
 wait 3000
 wavstop
 expect peak <990
+turn PRESET 1
+expect patch 5
+wav vibes.wav
+key 7 down
+key 11 down
+key 14 down
+wait 3500
+key 7 up
+key 11 up
+key 14 up
+wait 2500
+wavstop
 # HOLD, nothing held: the next chord played stays, and the keys play on over it
-turn PRESET -3
+turn PRESET -4
 expect patch 1
 tap PLAY
 expect hold 1

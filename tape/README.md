@@ -6,7 +6,8 @@ over MIDI; the tape is part of the instrument, with no clean signal and no bypas
 **The voices.** Three Mellotron-style patches, synthesised in that spirit: M-FLUTE (breathy, a chiff, a late
 vibrato), M-STRINGS (a bowed section of three saws), M-CHOIR (an "aah" through a vowel's formants). Each key is
 its own strip of tape: it comes up to speed a little flat, wobbles on its own, and with TAPE END on runs out after
-eight seconds, as a Mellotron's does. Two synths on the same tape: PAD (warm detuned saws) and BELL (soft FM).
+eight seconds, as a Mellotron's does. Two synths on the same tape, PAD (warm detuned saws) and BELL (soft FM), and
+VIBES: a vibraphone's bar (its first, fourth and tenth partials, the mallet in the upper two), its motor turning.
 Eight notes at once.
 
 **The tape.** A tape echo (its own loop of tape: the repeats darker each time round, the pitch bending when TIME
@@ -24,7 +25,7 @@ flat: amber where the oxide holds, dark where it has gone.
 | Control | What it does |
 | --- | --- |
 | Keys | Play (F3 to G5); MIDI notes in from USB and the TRS jack too |
-| PRESET | The patch: M-FLUTE, M-STRINGS, M-CHOIR, PAD, BELL |
+| PRESET | The patch: M-FLUTE, M-STRINGS, M-CHOIR, PAD, BELL, VIBES |
 | ALGORITHM | The tape: CASSETTE, MICROCASSETTE, VHS, REEL TO REEL |
 | PLAY | HOLD: the chord held down when you press it stays (or, with nothing held, the next chord you play), and the keys play on over it; again: it goes |
 | REC | FREEZE |

@@ -17,7 +17,7 @@ volatile uint32_t tp_notes, tp_drops, tp_drags;
 volatile uint8_t tp_voices;
 
 const char *const TP_TYPE_NAME[TP_NTYPES] = {"CASSETTE", "MICROCASSETTE", "VHS", "REEL TO REEL"};
-const char *const TP_PATCH_NAME[TP_NPATCH] = {"M-FLUTE", "M-STRINGS", "M-CHOIR", "PAD", "BELL"};
+const char *const TP_PATCH_NAME[TP_NPATCH] = {"M-FLUTE", "M-STRINGS", "M-CHOIR", "PAD", "BELL", "VIBES"};
 
 /* ------------------------------------------------------------- helpers --- */
 static uint32_t rng = 0x9E3779B9u;
@@ -123,7 +123,11 @@ static const patch_t PATCHES[TP_NPATCH] = {
     {1.2f, 2.2f, 0.43f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 1300.0f},
     /* BELL: soft FM, ringing out */
     {0.002f, 1.5f, 0.63f, 0.0f, 1.5f, 0.0f, 0.0f, 0.0f, 0.0f},
+    /* VIBES: a vibraphone's bar (its 1st, 4th and 10th partials), the motor's tremolo on it; the pedal down */
+    {0.002f, 1.8f, 0.50f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f},
 };
+#define MOTOR_HZ 5.2f                  /* the vibraphone's motor: its discs turning in the tubes */
+#define MOTOR_DEPTH 0.45f
 
 /* the choir's vowel: "aah", three formants (Chamberlin's filter coefficient, Q) */
 #define F1 730.0f
@@ -153,7 +157,7 @@ typedef struct {
     float lp1, lp2;                    /* strings, pad */
     float sv[3][2];                    /* choir: three formant filters (low, band) */
     float n1, n2, chiff, bpf;          /* flute's breath: a band of noise round its second harmonic */
-    float mph, minc, idx, ring;        /* bell */
+    float mph, minc, idx, ring;        /* bell; vibes: ring, idx, mph the 1st, 4th, 10th partials' levels */
     float wph, whz, wdepth;            /* its own tape's wobble */
     float pan;
     uint32_t start;                    /* for stealing: the oldest goes */
@@ -208,6 +212,11 @@ static void voice_on(int note, float vel, int patch, int held)
         v->mph = 0.0f;
         v->idx = 1.2f + 1.6f * vel;
         v->ring = 1.0f;
+        if (patch == TP_VIBES) {       /* the mallet: the upper partials by how hard */
+            v->idx = 0.30f + 0.25f * vel;
+            v->mph = 0.10f + 0.10f * vel;
+            v->ph[0] = v->ph[1] = v->ph[2] = 0.0f;
+        }
         v->wph = rndf();
         v->whz = 0.25f + 0.6f * rndf();
         v->wdepth = 0.6f + 0.8f * rndf();
@@ -269,6 +278,11 @@ static void voice_block(voice_t *v, float dt, float wowk, int tape_end, float ag
             v->inc[0] = f;
             v->minc = 2.0f * f;
             break;
+        case TP_VIBES:                 /* a bar tuned 1 : 4 : 10 */
+            v->inc[0] = f;
+            v->inc[1] = fm_minf(4.0f * f, 0.45f);
+            v->inc[2] = fm_minf(10.0f * f, 0.45f);
+            break;
         default:                       /* the flute */
             v->inc[0] = f;
             v->bpf = 2.0f * fm_sinf(3.1415927f * fm_minf(2.0f * f, 0.14f));   /* round 2 f0, up to ~6 kHz */
@@ -279,6 +293,7 @@ static void voice_block(voice_t *v, float dt, float wowk, int tape_end, float ag
         v->gate = 0;                   /* the strip of tape has run out */
 }
 
+static float motor_ph, motor_gain = 1.0f;
 /* one sample of a voice */
 static inline float voice_tick(voice_t *v, float ka, float kr, float a_lp)
 {
@@ -342,6 +357,17 @@ static inline float voice_tick(voice_t *v, float ka, float kr, float a_lp)
         v->lp1 += (s - v->lp1) * a_lp;
         v->lp2 += (v->lp1 - v->lp2) * a_lp;
         s = v->lp2 * 0.5f;
+        break;
+    case TP_VIBES:
+        for (o = 0; o < 3; o++) {
+            v->ph[o] += v->inc[o];
+            if (v->ph[o] >= 1.0f)
+                v->ph[o] -= 1.0f;
+        }
+        s = (sin01(v->ph[0]) * v->ring + sin01(v->ph[1]) * v->idx + sin01(v->ph[2]) * v->mph) * motor_gain;
+        v->ring *= 0.999985f;          /* the bar: ~1.5 s to half */
+        v->idx *= 0.99965f;            /* the 4th: ~45 ms */
+        v->mph *= 0.9985f;             /* the 10th: ~10 ms, the mallet */
         break;
     default: {                         /* BELL */
         float ph;
@@ -775,6 +801,11 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
 
         for (i = 0; i < n; i++) {
             float l = 0.0f, r = 0.0f, x, d, dd, rl, rr, f0, f1;
+            /* the vibraphone's motor: one for all its bars */
+            motor_ph += MOTOR_HZ / TP_SR;
+            if (motor_ph >= 1.0f)
+                motor_ph -= 1.0f;
+            motor_gain = 1.0f - MOTOR_DEPTH * (0.5f + 0.5f * sin01(motor_ph));
             /* the voices */
             for (k = 0; k < NVOICE; k++) {
                 voice_t *v = &vx[k];

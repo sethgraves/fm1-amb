@@ -4,7 +4,8 @@
  * signal and no bypass.
  *
  * The voices: three Mellotron-style patches (flute, strings, choir), each key its own strip of tape that comes up to
- * speed, wobbles on its own and can run out after eight seconds; and two synths (a pad, a bell). Eight at once.
+ * speed, wobbles on its own and can run out after eight seconds; two synths (a pad, a bell); and a vibraphone, its
+ * motor turning. Eight at once.
  * Then a tape echo, a room, and the deck: saturation and head bump on the way in; wow, flutter, motor drag and head
  * misalignment as a modulated delay; dull highs, dropouts, hiss and channel wander on the way out. Four tape types,
  * and AGE over all of it.
@@ -23,11 +24,11 @@
 #define TP_SR 44100.0f
 
 enum { TP_CASSETTE, TP_MICRO, TP_VHS, TP_REEL, TP_NTYPES };
-enum { TP_FLUTE, TP_STRINGS, TP_CHOIR, TP_PAD, TP_BELL, TP_NPATCH };
+enum { TP_FLUTE, TP_STRINGS, TP_CHOIR, TP_PAD, TP_BELL, TP_VIBES, TP_NPATCH };
 
 typedef struct {
     uint8_t type;                      /* TP_CASSETTE .. TP_REEL */
-    uint8_t patch;                     /* for the next notes: TP_FLUTE .. TP_BELL */
+    uint8_t patch;                     /* for the next notes: TP_FLUTE .. TP_VIBES */
     uint8_t freeze;                    /* 1: the loop holds what was just played and plays it, wearing */
     uint8_t tape_end;                  /* 1: the Mellotron patches run out after eight seconds */
     float age;                         /* 0 new .. 1 ruined: AGE and the tape's own wear together */

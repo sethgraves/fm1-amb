@@ -3,7 +3,7 @@
 /* TAPE: the app. You play the engine (dsp/tape.c) from the keys or MIDI; the knobs are the tape.
  *
  *   KEYS        play (F3 .. G5, moved by OCT- / OCT+); MIDI notes in from USB and the TRS jack too
- *   PRESET      the patch: M-FLUTE, M-STRINGS, M-CHOIR (Mellotron-style), PAD, BELL
+ *   PRESET      the patch: M-FLUTE, M-STRINGS, M-CHOIR (Mellotron-style), PAD, BELL, VIBES
  *   ALGORITHM   the tape: CASSETTE, MICROCASSETTE, VHS, REEL TO REEL
  *   PLAY        HOLD: the chord held down when it's pressed stays (or, nothing held, the next one played), and
  *               the keys play on over it; again: it goes
