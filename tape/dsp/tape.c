@@ -152,7 +152,7 @@ typedef struct {
     float ph[3], inc[3];
     float lp1, lp2;                    /* strings, pad */
     float sv[3][2];                    /* choir: three formant filters (low, band) */
-    float n1, n2, chiff;               /* flute's breath */
+    float n1, n2, chiff, bpf;          /* flute's breath: a band of noise round its second harmonic */
     float mph, minc, idx, ring;        /* bell */
     float wph, whz, wdepth;            /* its own tape's wobble */
     float pan;
@@ -269,8 +269,9 @@ static void voice_block(voice_t *v, float dt, float wowk, int tape_end, float ag
             v->inc[0] = f;
             v->minc = 2.0f * f;
             break;
-        default:
+        default:                       /* the flute */
             v->inc[0] = f;
+            v->bpf = 2.0f * fm_sinf(3.1415927f * fm_minf(2.0f * f, 0.14f));   /* round 2 f0, up to ~6 kHz */
             break;
         }
     }
@@ -292,11 +293,13 @@ static inline float voice_tick(voice_t *v, float ka, float kr, float a_lp)
             v->ph[0] -= 1.0f;
         s1 = sin01(v->ph[0]);
         s = s1 + 0.22f * (1.0f - 2.0f * s1 * s1) + 0.06f * s1 * (3.0f - 4.0f * s1 * s1);
+        /* breath: noise through a narrow band round the second harmonic, so it sounds of the note, not as static;
+         * a touch more for the first ~20 ms (the chiff) */
         n = rnds();
-        v->n1 += (n - v->n1) * 0.35f;
-        v->n2 += (v->n1 - v->n2) * 0.08f;
-        v->chiff *= 0.99985f;
-        s = s * 0.7f + (v->n1 - v->n2) * (0.25f + 1.4f * v->chiff);   /* breath: a little, more at the start */
+        v->n1 += v->bpf * v->n2;
+        v->n2 += v->bpf * (n - v->n1 - 0.3f * v->n2);
+        v->chiff *= 0.9989f;
+        s = s * 0.7f + v->n2 * 0.05f * (1.0f + 1.5f * v->chiff);
         break;
     }
     case TP_STRINGS:
