@@ -1,146 +1,186 @@
 # TAPE in the host simulator: python3 base/tools/build.py tape --host, then
 #   tape/build/host/tape_host tape/tests/basic.txt OUTDIR
-wait 1500
-expect playing 1
-expect type 0
-expect scene 0
-wav cassette.wav
-wait 40000
-wavstop
+# keys by number: 0 = F3; 7 = C4, 11 = E4, 14 = G4, 16 = A4
+wait 600
+expect voices 0
+expect patch 0
+expect frozen 0
+# a C major chord on M-FLUTE
+wav flute.wav
+key 7 down
+key 11 down
+key 14 down
+wait 3000
+expect voices 3
 shot playing.png
-expect notes >20
-expect ghosts >4
-expect peak >30
+key 7 up
+key 11 up
+key 14 up
+wait 1500
+wavstop
+expect voices 0
+expect peak >20
+# every patch: the same chord
+turn PRESET 1
+wav strings.wav
+key 7 down
+key 11 down
+key 14 down
+wait 3500
+key 7 up
+key 11 up
+key 14 up
+wait 1500
+wavstop
+turn PRESET 1
+wav choir.wav
+key 7 down
+key 11 down
+key 14 down
+wait 3500
+key 7 up
+key 11 up
+key 14 up
+wait 1500
+wavstop
+turn PRESET 1
+wav pad.wav
+key 7 down
+key 11 down
+key 14 down
+wait 4000
+key 7 up
+key 11 up
+key 14 up
+wait 4000
+wavstop
+turn PRESET 1
+expect patch 4
+wav bell.wav
+tapkey 7
+wait 300
+tapkey 11
+wait 300
+tapkey 14
+wait 300
+tapkey 16
+wait 3000
+wavstop
 expect peak <990
-# every tape
-turn PRESET 1
-wav micro.wav
-wait 25000
-wavstop
-shot micro.png
-turn PRESET 1
-wav vhs.wav
-wait 25000
-wavstop
-turn PRESET 1
-wav reel.wav
-wait 25000
-wavstop
-shot reel.png
-expect type 3
-# a ruined cassette: AGE all the way up
+# HOLD: a chord stays; a new note replaces it
 turn PRESET -3
-turn K1 40
-expect age 100
-wav ruined.wav
+expect patch 1
+tap PLAY
+expect hold 1
+key 7 down
+key 11 down
+key 14 down
+wait 100
+key 7 up
+key 11 up
+key 14 up
+wait 3000
+expect voices 3
+tapkey 16
+wait 2000
+expect voices 1
+tap PLAY
+wait 2000
+expect hold 0
+expect voices 0
+# FREEZE: play for the loop's 8 s, freeze it, let it wear
+wav freeze.wav
+key 7 down
+key 14 down
+wait 2500
+key 11 down
+wait 2500
+key 16 down
+wait 3500
+tap REC
+wait 50
+expect frozen 1
+key 7 up
+key 11 up
+key 14 up
+key 16 up
+wait 10000
+expect passes 1
+# DECAY up: it disintegrates
+turn SELECT 2
+turn K3 30
 wait 60000
 wavstop
-shot ruined.png
-expect drops >3
-expect peak <990
-turn K1 -35
-# the other scenes
-turn ALGO 1
-wav sunroom.wav
-wait 30000
+shot frozen.png
+expect passes >6
+expect damage >300
+tap REC
+wait 100
+expect frozen 0
+expect damage 0
+# the echo
+turn SELECT -1
+turn K1 20
+turn K3 15
+wav echo.wav
+tapkey 7
+wait 500
+tapkey 14
+wait 4000
 wavstop
+shot echo.png
+# the tape, ruined: AGE all the way, WOW and FLUTTER up, on a microcassette
+turn SELECT -1
+turn K1 40
+turn K2 20
+turn K3 20
 turn ALGO 1
-wait 5000
-turn ALGO 1
-wait 5000
-expect scene 3
-# the second page: the nature alone
-turn SELECT 1
-turn K1 -40
-turn K2 -40
-turn K3 -40
-turn K4 40
-wav nature.wav
+expect type 1
+wav ruined.wav
+key 7 down
+key 11 down
+key 14 down
 wait 20000
+key 7 up
+key 11 up
+key 14 up
+wait 1500
 wavstop
-shot page2.png
-# stop: the music fades, the hiss stays
-tap PLAY
-wait 8000
-expect playing 0
-# the wear: it counted, and the flash has it after the stop
-expect wear_s >240
+shot ruined.png
+expect peak <990
+turn ALGO -1
+turn K1 -40
+turn K2 -20
+turn K3 -20
+# TAPE END: a Mellotron note runs out after 8 s
+turn SELECT 3
+turn K3 1
+key 7 down
+wait 9500
+expect voices 0
+key 7 up
+turn K3 -1
+shot setup.png
+# OCT+: an octave up; MIDI in: a note on and off
+tap OCT+
+expect oct 1
+tap OCT-
+midi 90 3C 64
+wait 500
+expect voices 1
+midi 80 3C 00
+wait 1500
+expect voices 0
+# SAVE, and back after a reboot; the wear counted
 tap SAVE
 wait 30
 expect dirty 0
 reboot
 wait 600
-expect playing 0
-expect scene 3
-expect wear_s >240
-# HOME held: a new tape
+expect patch 1
+expect wear_s >60
 press HOME
 wait 2200
 release HOME
 wait 100
 expect wear_s 0
-reboot
-wait 600
-expect wear_s 0
-# ---- v2: the loop ----
-# back to a fresh start: music on, a scene, all the levels up
-tap PLAY
-turn K1 40
-turn K2 40
-turn K3 40
-turn K4 -30
-turn SELECT 1
-expect loop_len 176400
-turn K3 -10
-expect loop_len 29400
-# CAPTURE: the first pass records, then it plays round and wears
-tap REC
-wait 100
-expect capturing 1
-wait 2200
-expect capturing 0
-expect passes 1
-# BASINSKI all the way: the loop alone; DECAY all the way: it goes fast
-turn K1 50
-turn K4 50
-wav basinski.wav
-wait 90000
-wavstop
-shot loop.png
-expect passes >40
-expect damage >3000
-# FEED: new music onto the loop each pass
-turn K2 50
-wait 10000
-turn K2 -50
-# CAPTURE again: a clean loop
-tap REC
-wait 100
-expect damage 0
-expect passes 0
-# the tuning: 432 by default, a hertz a press, kept by SAVE
-expect tune 432
-tap OCT+
-wait 50
-expect tune 433
-tap OCT-
-tap OCT-
-wait 50
-expect tune 431
-tap OCT+
-wait 50
-tap SAVE
-reboot
-wait 600
-expect tune 432
-# the key: a B flute; every scene moves; back to the scenes' own
-turn SELECT 1
-turn K1 12
-wait 100
-expect key 12
-wav b_flute.wav
-wait 15000
-wavstop
-shot setup.png
-turn K1 -12
-expect key 0

@@ -6,39 +6,35 @@ CASSETTE	cassette
 MICROCASSETTE	microcassette
 VHS	V H S
 REEL TO REEL	reel to reel
-GLIDE	glide
-SUNROOM	sunroom
-MEMORY	memory
-RIVER	river
+M-FLUTE	M flute
+M-STRINGS	M strings
+M-CHOIR	M choir
+PAD	pad
+BELL	bell
 AGE	age
-DENSITY	density
-SPACE	space
+WOW	wow
+FLUTTER	flutter
 DRIVE	drive
-PADS	pads
-BELLS	bells
-FLUTE	flute
-NATURE	nature
+ECHO	echo
+TIME	time
+FEEDBACK	feedback
+SPACE	space
+BASINSKI	basinski
+LENGTH	length
+DECAY	decay
+ATTACK	attack
+RELEASE	release
+TAPE END	tape end
+TUNE	tune
+LOOP	loop
+SETUP	setup
+HOLD	hold
+FREEZE	freeze
+FROZEN	frozen
+OCTAVE	octave
+OCT	octave
 WEAR	wear
 NEW TAPE	new tape
 HOLD HOME	hold home
 TO RESET WEAR	to reset wear
-STOPPED	stopped
 CPU	C P U
-BASINSKI	basinski
-FEED	feed
-LENGTH	length
-DECAY	decay
-LOOP	loop
-CAPTURE	capture
-A FRESH LOOP	a fresh loop
-CAPTURING	capturing
-PASS	pass
-PASSES	passes
-STOP	stop
-TUNING	tuning
-A = 432	A equals four thirty-two
-KEY	key
-TUNE	tune
-SETUP	setup
-FLUTE	flute
-SCENE	scene

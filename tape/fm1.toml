@@ -9,14 +9,14 @@ include = ["dsp"]
 o2 = ["dsp/tape.c"]           # the engine, at -O2
 words = "words.tsv"
 # the site
-tagline = "A generative ambient machine that only exists on tape."
+tagline = "A Mellotron meets an ambient synth, with the tape built in."
 repo = "https://github.com/sethgraves/fm1-dream"
 licence = "MPL-2.0"
 credits = "Built on fm1-base by Charles Vestal and felucca-bsp, from Felucca by Leo Kuroshita (Hügelton Instruments)."
 # firmware.json
 author = "Seth Graves"
-description = "Warm pads, soft bells, a breathy flute and a stream, played through a tape that is part of the instrument: wow, flutter, saturation, hiss, dull highs, dropouts, motor drag, head misalignment and print-through. Four tape types, one AGE knob, and a tape that wears as you play it and remembers."
-tags = ["ambient", "generative"]
+description = "Mellotron-style flute, strings and choir, a pad and a bell, played from the keys or MIDI through a tape that is part of the instrument: wow, flutter, saturation, hiss, dull highs, dropouts, motor drag, a tape echo, four tape types and one AGE knob. FREEZE holds what you just played and lets it disintegrate, after Basinski."
+tags = ["synth", "ambient"]
 install = "https://github.com/sethgraves/fm1-dream"
 site = "https://github.com/sethgraves/fm1-dream"
 screenshot = "docs/img/screen-playing.png"

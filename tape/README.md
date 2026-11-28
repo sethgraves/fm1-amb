@@ -1,62 +1,53 @@
 # TAPE (working name)
 
-A generative ambient machine for the M-VAVE FM-1 about memory and media wearing out, in the spirit of
-Matthewdavid's *Trust the Guide and Glide*. There is no clean signal and no bypass: the music is made, put through a
-room, recorded onto a tape and played back, and the tape is part of the instrument.
+A Mellotron meets an ambient synth, for the M-VAVE FM-1, with the tape built in. You play it from the keys or
+over MIDI; the tape is part of the instrument, with no clean signal and no bypass.
 
-**The music.** Warm pads of detuned saws that glide from chord to chord, soft FM bells arpeggiating the chord, a
-breathy flute that plays a short phrase now and then, and a stream with drops and birds. Four scenes, each a whole
-arrangement on ALGORITHM: GLIDE (D lydian: the pads lead, long glides, few bells), SUNROOM (F major: brighter, quicker
-chords, bells running high in sixteenths, the flute out front), MEMORY (A dorian: low, dark pads, the bells a soft
-low pluck with a long ring, long chords), RIVER (Eb pentatonic: one held chord, the bells falling as scattered drops,
-the stream forward). The flute and
-the nature are synthesised, not samples.
+**The voices.** Three Mellotron-style patches, synthesised in that spirit: M-FLUTE (breathy, a chiff, a late
+vibrato), M-STRINGS (a bowed section of three saws), M-CHOIR (an "aah" through a vowel's formants). Each key is
+its own strip of tape: it comes up to speed a little flat, wobbles on its own, and with TAPE END on runs out after
+eight seconds, as a Mellotron's does. Two synths on the same tape: PAD (warm detuned saws) and BELL (soft FM).
+Eight notes at once.
 
-**The tape.** Saturation and head bump on the way in. Wow, flutter, motor drag and head misalignment in the
-transport. Dull highs, dropouts, hiss and channels that wander on the way out. Print-through: faint ghosts of the
-bells and flute a tape-wrap before and after them (the machine plans its notes ahead, so a ghost can come first).
+**The tape.** A tape echo (its own loop of tape: the repeats darker each time round, the pitch bending when TIME
+moves), a room, then the deck: saturation and head bump on the way in; wow, flutter, motor drag and head
+misalignment in the transport; dull highs, dropouts, hiss and channels that wander on the way out. Four tape types
+and AGE over all of it.
+
+**FREEZE and BASINSKI.** The loop records the last LENGTH seconds all the time, unheard. FREEZE holds it: what you
+just played goes round and round, and every pass the oxide comes off a little more, always where it was already
+coming off, until only hiss and fragments are left (after William Basinski's *Disintegration Loops*). BASINSKI is
+how much of it you hear over what you play now. FREEZE again lets it go. The gauge under the tape is the loop laid
+flat: amber where the oxide holds, dark where it has gone.
 
 | Control | What it does |
 | --- | --- |
-| PLAY | The music on / off (it fades; the tape keeps running, so the hiss stays) |
-| PRESET | The tape: CASSETTE, MICROCASSETTE, VHS, REEL TO REEL |
-| ALGORITHM | The scene |
-| K1 AGE | New to ruined: everything about the tape at once |
-| K2 DENSITY | How many notes |
-| K3 SPACE | The room |
-| K4 DRIVE | How hard the music hits the tape |
-| SELECT | Page 2: K1 PADS, K2 BELLS, K3 FLUTE, K4 NATURE (levels) |
-| SELECT | Page 3, the loop: K1 BASINSKI, K2 FEED, K3 LENGTH, K4 DECAY |
-| REC | CAPTURE: a fresh loop, recorded from the machine (lit while it records the first pass) |
-| SELECT | Page 4, SETUP: K1 KEY (SCENE, or a flute's key, C to B), K2 TUNE (A = 415 to 446 Hz, 432 by default) |
-| OCT- / OCT+ | The tuning too, a hertz at a time |
+| Keys | Play (F3 to G5); MIDI notes in from USB and the TRS jack too |
+| PRESET | The patch: M-FLUTE, M-STRINGS, M-CHOIR, PAD, BELL |
+| ALGORITHM | The tape: CASSETTE, MICROCASSETTE, VHS, REEL TO REEL |
+| PLAY | HOLD: notes sound on after the keys let go (a new chord replaces them) |
+| REC | FREEZE |
+| OCT- / OCT+ | The keys down or up an octave (-2 to +2) |
+| SELECT | The page |
+| Page TAPE | AGE, WOW, FLUTTER, DRIVE (WOW and FLUTTER: the tape's own at 50) |
+| Page ECHO | ECHO (level), TIME (50 to 1100 ms), FEEDBACK, SPACE (the room) |
+| Page LOOP | BASINSKI, LENGTH (2 to 17 s), DECAY |
+| Page SETUP | ATTACK, RELEASE (the patch's own at 50), TAPE END (OFF or 8 S), TUNE (A = 415 to 446 Hz, 432 by default) |
 | HOME (hold 2 s) | The tape's wear back to new |
 | SAVE | Keeps the settings for the next power-on |
-| MASTER | Volume |
 
-**Playing along.** Set KEY to a native-style flute's key and every scene moves so that the flute's minor
-pentatonic sits inside it: GLIDE, SUNROOM and RIVER to the major a minor third up (a B flute: D), MEMORY to the
-flute's own key (B minor). TUNE matches the flute's pitch (432 by default). The key shows beside the scene's name.
-
-**The loop (v2).** After William Basinski's *Disintegration Loops*: the machine records its own output onto a loop
-(2 to 17 seconds, mono, 8-bit at 14.7 kHz) and plays it round, and every pass the oxide comes off a little more,
-always where it was already coming off. Worn spots go dull, then quiet, then drop out, and spread to their
-neighbours, until only hiss and fragments are left. BASINSKI turns from the live machine to the loop alone; FEED
-puts new music onto it each pass (0: it only decays); DECAY sets how fast. The gauge under the tape is the loop
-laid flat: amber where the oxide holds, dark where it has gone, the head a white line.
-
-**Wear.** The tape wears as it plays, and remembers. Each hour of playing ages it a little more on top of AGE, up
-to +40 after ten hours, most of it early. It is written to the flash every ten minutes of play and when the music
-stops, and shown under the scene as WEAR.
+**Wear.** The tape wears as it plays, and remembers: each hour of sound ages it a little more on top of AGE, up to
++40 after ten hours, most of it early. It is written to the flash every ten minutes of play.
 
 | Tape | Character |
 | --- | --- |
 | Cassette | The middle: some wobble, some hiss, highs go with age |
 | Microcassette | Thin (no lows), wobbly, mono, hissy, dull |
-| VHS | The linear audio track: slow wobble, dull, near mono, tracking dropouts |
-| Reel to reel | Wide, steady, quiet, warm head bump, the strongest print-through |
+| VHS | The linear audio track: slow wobble, dull, near mono, dropouts |
+| Reel to reel | Wide, steady, quiet, warm head bump |
 
-About a quarter of the FM-1's audio time, measured against the probe build's readings on the device.
+At most about two thirds of the FM-1's audio time (eight choir notes with everything up), measured against the
+device's own readings of an earlier build.
 
 ## Build
 

@@ -1,1 +1,1 @@
-A generative ambient machine that only exists on tape.
+A Mellotron meets an ambient synth, with the tape built in.
