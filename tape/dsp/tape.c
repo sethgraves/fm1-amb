@@ -11,7 +11,7 @@
 #endif
 
 volatile tp_cfg_t tp_cfg = {TP_CASSETTE, TP_FLUTE, 0, 0, 0.3f, 0.5f, 0.5f, 0.4f, 0.3f, 0.35f, 0.4f, 0.4f,
-                            0.5f, 0.4f, 8.0f, 0.5f, 0.5f, 432.0f};
+                            0.5f, 0.4f, 8.0f, 1.0f, 0, 0.5f, 0.5f, 432.0f};
 volatile float tp_speed = 1.0f, tp_reel_turns, tp_drop, tp_peak;
 volatile uint32_t tp_notes, tp_drops, tp_drags;
 volatile uint8_t tp_voices;
@@ -568,6 +568,10 @@ static uint8_t loop[TP_LOOP_BYTES] TP_POOL;
 static float ulaw_dec[256];
 static uint32_t lsub;
 static float lacc, lold, lnew, lwear, lgen;
+static float rpos, spd = 1.0f, lsum; /* frozen: the head (loop samples, fractional), its speed, the input since */
+static uint32_t lcnt;
+static int32_t wlast = -1;              /* the loop sample last worn (and written) */
+volatile float tp_loop_speed = 1.0f;
 static float haas[512];                /* the loop's right: its left a few ms later, for some width */
 static uint32_t haas_w;
 
@@ -633,44 +637,79 @@ static void loop_wear(float decay, uint32_t ncell)
         }
 }
 
+/* a frozen loop's sample, as the head passes it: worn a little more (and, overdubbing, what was played since
+ * the last one added) */
+static void loop_pass_sample(uint32_t i, float decay, float add, int overdub)
+{
+    float x = ulaw_dec[loop[i]], d = (float)tp_damage[i / TP_CELL] * (1.0f / 255.0f), keep;
+    lwear += (x - lwear) * (1.0f - 0.85f * d);                 /* worn spots go dull */
+    lgen += (lwear - lgen) * (1.0f - 0.12f * decay);           /* and every pass a little dull everywhere */
+    keep = (1.0f - 0.3f * d * d) * (1.0f - 0.006f * decay);   /* and quiet */
+    if (d > 0.55f && (rnd() & 255u) < (uint32_t)(d * 70.0f))
+        keep = 0.0f;                                           /* and gone */
+    x = lgen * keep + rnds() * 0.0005f * (0.3f + decay);      /* the pass writes its own hiss */
+    if (overdub)
+        x = x * 0.85f + add * 0.8f;                            /* sound on sound: the old under the new */
+    loop[i] = ulaw_enc(x);
+}
+
 /* one sample of the machine in; the loop's playback out (left, and the right a little later). Not frozen: it records
- * (the playback is what it records, LENGTH ago). Frozen: it only plays and wears. */
-static inline void loop_tick(float in, float decay, float *ol, float *or_)
+ * (the playback is what it records, LENGTH ago). Frozen: the head moves at the loop's speed, gliding (a reel's
+ * weight), forwards or back; each sample it passes wears, and takes what is played if overdubbing. */
+static inline void loop_tick(float in, float decay, float speed, int overdub, float *ol, float *or_)
 {
     float t, y;
-    lacc += in;
-    if (++lsub >= TP_LOOP_DIV) {
-        uint32_t pos = tp_loop_pos, len = tp_loop_len;
-        float x;
-        lsub = 0;
-        x = ulaw_dec[loop[pos]];
-        if (tp_frozen) {
-            float d = (float)tp_damage[pos / TP_CELL] * (1.0f / 255.0f), keep;
-            lwear += (x - lwear) * (1.0f - 0.85f * d);                 /* worn spots go dull */
-            lgen += (lwear - lgen) * (1.0f - 0.12f * decay);           /* and every pass a little dull everywhere */
-            keep = (1.0f - 0.3f * d * d) * (1.0f - 0.006f * decay);   /* and quiet */
-            if (d > 0.55f && (rnd() & 255u) < (uint32_t)(d * 70.0f))
-                keep = 0.0f;                                           /* and gone */
-            x = lgen * keep + rnds() * 0.0005f * (0.3f + decay);      /* the pass writes its own hiss */
-            loop[pos] = ulaw_enc(x);
-        } else {
+    uint32_t len = tp_loop_len;
+    if (!tp_frozen) {
+        lacc += in;
+        if (++lsub >= TP_LOOP_DIV) {
+            uint32_t pos = tp_loop_pos;
+            float x = ulaw_dec[loop[pos]];
+            lsub = 0;
             lwear = lgen = x;
             loop[pos] = ulaw_enc(lacc * (1.0f / (float)TP_LOOP_DIV));
+            lold = lnew;
+            lnew = x;
+            lacc = 0.0f;
+            if (++pos >= len)
+                pos = 0;
+            tp_loop_pos = pos;
         }
-        lold = lnew;
-        lnew = x;
-        lacc = 0.0f;
-        if (++pos >= len) {
-            pos = 0;
-            if (tp_frozen) {
-                loop_wear(decay, (len + TP_CELL - 1u) / TP_CELL);
-                tp_passes++;
-            }
+        t = (float)lsub * (1.0f / (float)TP_LOOP_DIV);
+        y = lold + (lnew - lold) * t;
+    } else {
+        int32_t ip;
+        uint32_t i1;
+        float a, b;
+        spd += (speed - spd) * 0.00004f;               /* ~0.6 s: the reel's weight */
+        lsum += in;
+        lcnt++;
+        rpos += spd * (1.0f / (float)TP_LOOP_DIV);
+        if (rpos >= (float)len) {                      /* round again, forwards or back: a pass */
+            rpos -= (float)len;
+            loop_wear(decay, (len + TP_CELL - 1u) / TP_CELL);
+            tp_passes++;
+        } else if (rpos < 0.0f) {
+            rpos += (float)len;
+            loop_wear(decay, (len + TP_CELL - 1u) / TP_CELL);
+            tp_passes++;
         }
-        tp_loop_pos = pos;
+        ip = (int32_t)rpos;
+        if (ip >= (int32_t)len)
+            ip = (int32_t)len - 1;
+        if (ip != wlast) {
+            loop_pass_sample((uint32_t)ip, decay, lsum / (float)lcnt, overdub);
+            wlast = ip;
+            lsum = 0.0f;
+            lcnt = 0;
+        }
+        i1 = (uint32_t)ip + 1u >= len ? 0u : (uint32_t)ip + 1u;
+        a = ulaw_dec[loop[ip]];
+        b = ulaw_dec[loop[i1]];
+        y = a + (b - a) * (rpos - (float)ip);
+        tp_loop_pos = (uint32_t)ip;
+        tp_loop_speed = spd;
     }
-    t = (float)lsub * (1.0f / (float)TP_LOOP_DIV);
-    y = lold + (lnew - lold) * t;
     *ol = y;
     *or_ = haas[(haas_w - 300u) & 511u];              /* ~7 ms */
     haas[haas_w] = y;
@@ -735,11 +774,18 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
         }
     }
     /* FREEZE: a clean tape on letting go */
-    if (c.freeze && !tp_frozen) {
+    if (c.freeze && !tp_frozen) {                      /* frozen: the head from where the recording was, at 1 */
         loop_clean();
+        rpos = (float)tp_loop_pos;
+        spd = 1.0f;
+        wlast = -1;
+        lsum = 0.0f;
+        lcnt = 0;
+        tp_loop_speed = 1.0f;
         tp_frozen = 1;
-    } else if (!c.freeze && tp_frozen) {
+    } else if (!c.freeze && tp_frozen) {               /* let go: recording again from where the head is */
         tp_frozen = 0;
+        tp_loop_speed = 1.0f;
         loop_clean();
     }
     {
@@ -747,6 +793,8 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
         len = len > TP_LOOP_BYTES ? TP_LOOP_BYTES : len;
         if (tp_loop_pos >= len)
             tp_loop_pos = 0;
+        if (rpos >= (float)len)                        /* a shorter loop: the head into it */
+            rpos = (float)((uint32_t)rpos % len);
         tp_loop_len = len;
     }
 
@@ -820,7 +868,7 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
              * the room and the tape with what is played now, BASINSKI the balance */
             {
                 float ll, lrr, b;
-                loop_tick(0.5f * (l + r), c.decay, &ll, &lrr);
+                loop_tick(0.5f * (l + r), c.decay, c.loop_speed, c.overdub, &ll, &lrr);
                 fz += ((tp_frozen ? 1.0f : 0.0f) - fz) * 0.0005f;   /* ~50 ms */
                 b = c.basinski * fz;
                 l = l * (1.0f - b) + ll * b * 1.6f;   /* the loop a shade up: the mu-law and the wear take some */
@@ -927,7 +975,7 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
             lr[2 * i + 1] = (int32_t)(fm_clampf(r, -1.0f, 1.0f) * 8388000.0f);
         }
     }
-    tp_reel_turns += dt * 0.6f * tp_speed;
+    tp_reel_turns += dt * 0.6f * tp_speed * (tp_frozen ? tp_loop_speed : 1.0f);   /* the reels: the loop's speed */
     if (pk > tp_peak)
         tp_peak = pk;
 }

@@ -7,9 +7,10 @@
  *   ALGORITHM   the tape: CASSETTE, MICROCASSETTE, VHS, REEL TO REEL
  *   PLAY        HOLD: the chord held down when it's pressed stays (or, nothing held, the next one played), and
  *               the keys play on over it; again: it goes
- *   REC         FREEZE: the loop holds what was just played and plays it, wearing; again: let it go
+ *   REC         FREEZE: the loop holds what was just played and plays it, wearing. Frozen: a tap lets it go;
+ *               held, what is played goes onto the loop while it's held (sound on sound)
  *   SELECT      the page: TAPE (AGE, WOW, FLUTTER, DRIVE), ECHO (ECHO, TIME, FEEDBACK, SPACE),
- *               LOOP (BASINSKI, LENGTH, DECAY), SETUP (ATTACK, RELEASE, TAPE END, TUNE)
+ *               LOOP (BASINSKI, LENGTH, DECAY, SPEED), SETUP (ATTACK, RELEASE, TAPE END, TUNE)
  *   OCT- OCT+   the keys an octave down or up (-2 .. +2)
  *   HOME (hold) the tape's wear back to new
  *   SAVE        keeps the settings for the next power-on
@@ -24,22 +25,34 @@
 
 #define SET_MAGIC 0x54505634u            /* "TPV4": the played instrument */
 enum { K_AGE, K_WOW, K_FLUTTER, K_DRIVE, K_ECHO, K_TIME, K_FB, K_SPACE, K_BASINSKI, K_LENGTH, K_DECAY, K_ATTACK,
-       K_RELEASE, K_TAPEEND, K_TUNE, NK };
+       K_RELEASE, K_TAPEEND, K_TUNE, K_SPEED, NK };
+/* SPEED, a step a semitone: 0 backwards as played .. 24 backwards two octaves down, then 25 forwards two octaves
+ * down .. 49 as played .. 61 an octave up */
+#define SPEED_1X 49
 #define NPAGES 4
 static const int8_t PAGE_K[NPAGES][4] = {{K_AGE, K_WOW, K_FLUTTER, K_DRIVE},
                                          {K_ECHO, K_TIME, K_FB, K_SPACE},
-                                         {K_BASINSKI, K_LENGTH, K_DECAY, -1},
+                                         {K_BASINSKI, K_LENGTH, K_DECAY, K_SPEED},
                                          {K_ATTACK, K_RELEASE, K_TAPEEND, K_TUNE}};
 static const char *const PAGE_NAME[NPAGES] = {"TAPE", "ECHO", "LOOP", "SETUP"};
-static const int8_t K_DEF[NK] = {30, 50, 50, 40, 30, 40, 40, 40, 60, 8, 40, 50, 50, 0, 32};
+static const int8_t K_DEF[NK] = {30, 50, 50, 40, 30, 40, 40, 40, 60, 8, 40, 50, 50, 0, 32, SPEED_1X};
 static const char *const KNOB_NAME[NK] = {"AGE", "WOW", "FLUTTER", "DRIVE", "ECHO", "TIME", "FEEDBACK", "SPACE",
-                                          "BASINSKI", "LENGTH", "DECAY", "ATTACK", "RELEASE", "TAPE END", "TUNE"};
+                                          "BASINSKI", "LENGTH", "DECAY", "ATTACK", "RELEASE", "TAPE END", "TUNE",
+                                          "SPEED"};
 /* each knob's range and step a detent: LENGTH seconds; TIME tens of ms; TAPE END off/on; TUNE A less 400 Hz */
 static int32_t k_lo(int k) { return k == K_LENGTH ? 2 : k == K_TIME ? 5 : k == K_TUNE ? 15 : 0; }
-static int32_t k_hi(int k) { return k == K_LENGTH ? 12 : k == K_TIME ? 110 : k == K_TAPEEND ? 1 : k == K_TUNE ? 46 : 100; }
-static int32_t k_step(int k)
+static int32_t k_hi(int k)
 {
-    return k == K_LENGTH || k == K_TAPEEND || k == K_TUNE ? 1 : 2;
+    return k == K_LENGTH ? 12 : k == K_TIME ? 110 : k == K_TAPEEND ? 1 : k == K_TUNE ? 46 : k == K_SPEED ? 61 : 100;
+}
+static int32_t k_step(int k) { return k == K_LENGTH || k == K_TAPEEND || k == K_TUNE || k == K_SPEED ? 1 : 2; }
+
+/* SPEED's step as a speed: backwards negative */
+static float speed_of(int v)
+{
+    if (v <= 24)
+        return -fm_exp2f(-(float)v * (1.0f / 12.0f));
+    return fm_exp2f((float)(v - SPEED_1X) * (1.0f / 12.0f));
 }
 
 typedef struct {
@@ -119,6 +132,7 @@ static void engine_push(void)
     tp_cfg.attack = kf(K_ATTACK);
     tp_cfg.release = kf(K_RELEASE);
     tp_cfg.tape_end = (uint8_t)set.k[K_TAPEEND];
+    tp_cfg.loop_speed = speed_of(set.k[K_SPEED]);
     tp_cfg.a4 = 400.0f + (float)set.k[K_TUNE];
 }
 
@@ -149,6 +163,8 @@ static struct {
     uint32_t msg_until;
     uint32_t btn, keys;
     uint32_t home_t;
+    uint32_t rec_t;                      /* REC went down while frozen (0: not) */
+    uint8_t rec_said;
     uint32_t sec_t;
     uint32_t cpu_peak;
     uint8_t page, redraw;
@@ -213,6 +229,26 @@ static void value_text(int k, char *t, int words)
     t[0] = 0;
     if (k == K_TAPEEND) {
         text_cat(t, set.k[k] ? "8 S" : "OFF");
+        return;
+    }
+    if (k == K_SPEED) {                  /* "1X" "1/2" "1/4" "2X" at the octaves, else a percentage; "REV" backwards */
+        int v = set.k[k], pc = (int)(fm_fabsf(speed_of(v)) * 100.0f + 0.5f);
+        if (v <= 24)
+            text_cat(t, "REV ");
+        if (pc == 100)
+            text_cat(t, "1X");
+        else if (pc == 50)
+            text_cat(t, "1/2");
+        else if (pc == 25)
+            text_cat(t, "1/4");
+        else if (pc == 200)
+            text_cat(t, "2X");
+        else {
+            char n[8];
+            int_text(pc, n);
+            text_cat(t, n);
+            text_cat(t, "%");
+        }
         return;
     }
     if (k == K_TIME) {
@@ -352,8 +388,16 @@ static void input(void)
         if (k == B_PLAY) {
             hold_press();
         } else if (k == B_REC) {
-            tp_cfg.freeze = (uint8_t)!tp_cfg.freeze;
-            app_say(tp_cfg.freeze ? "FROZEN" : "FREEZE", tp_cfg.freeze ? "" : "OFF");
+            if (!tp_cfg.freeze) {            /* FREEZE, SPEED back to as played */
+                set.k[K_SPEED] = SPEED_1X;
+                engine_push();
+                tp_cfg.freeze = 1;
+                app_say("FROZEN", "");
+            } else {                         /* frozen: overdub from now; let go soon and it was a tap */
+                ui.rec_t = now | 1u;
+                ui.rec_said = 0;
+                tp_cfg.overdub = 1;
+            }
         } else if (k == B_OCTDN || k == B_OCTUP) {
             int32_t o = clamp((int32_t)set.oct + (k == B_OCTUP ? 1 : -1), -2, 2);
             if (o != set.oct) {
@@ -374,6 +418,17 @@ static void input(void)
             ui.home_t = now | 1u;
             app_say("HOLD HOME", "TO RESET WEAR");
         }
+    }
+    if (ui.rec_t && !(btn & (1u << B_REC))) {
+        tp_cfg.overdub = 0;
+        if (now - ui.rec_t < 400u) {         /* a tap: let the loop go */
+            tp_cfg.freeze = 0;
+            app_say("FREEZE", "OFF");
+        }
+        ui.rec_t = 0;
+    } else if (ui.rec_t && now - ui.rec_t >= 400u && !ui.rec_said) {
+        ui.rec_said = 1;
+        app_say("SOUND ON SOUND", "");
     }
     if (ui.home_t && !(btn & (1u << B_HOME)))
         ui.home_t = 0;
@@ -599,7 +654,7 @@ static void draw(void)
     if (ui.hold)
         text_cat(t, ui.hold == 1 ? "HOLD...  " : "HOLD  ");
     if (tp_frozen) {
-        text_cat(t, "FROZEN ");
+        text_cat(t, tp_cfg.overdub ? "OVERDUB " : "FROZEN ");
         int_text((int32_t)tp_passes, n);
         text_cat(t, n);
     } else {
@@ -685,6 +740,12 @@ int app_expect(const char *what, int *got)
         *got = (int)tp_passes;
     else if (!strcmp(what, "loop_len"))
         *got = (int)tp_loop_len;
+    else if (!strcmp(what, "speed_pct"))   /* the loop's speed now, %, backwards negative */
+        *got = (int)(tp_loop_speed * 100.0f + (tp_loop_speed < 0.0f ? -0.5f : 0.5f));
+    else if (!strcmp(what, "overdub"))
+        *got = tp_cfg.overdub;
+    else if (!strcmp(what, "speed_k"))
+        *got = set.k[K_SPEED];
     else if (!strcmp(what, "tune"))
         *got = 400 + set.k[K_TUNE];
     else if (!strcmp(what, "damage")) {

@@ -138,6 +138,39 @@ wavstop
 shot frozen.png
 expect passes >6
 expect damage >300
+# SPEED: half (an octave down), gliding there; then backwards
+turn K4 -12
+expect speed_k 37
+wait 2500
+expect speed_pct >46
+expect speed_pct <54
+turn K4 -30
+wait 4000
+expect speed_pct <-60
+shot reverse.png
+wav reverse.wav
+wait 6000
+wavstop
+# sound on sound: REC held while frozen, a note goes onto the loop; let go, still frozen
+press REC
+key 16 down
+wait 2500
+expect overdub 1
+key 16 up
+wait 500
+release REC
+wait 50
+expect overdub 0
+expect frozen 1
+# a tap lets it go; a new freeze starts at 1X
+tap REC
+wait 100
+expect frozen 0
+tap REC
+wait 100
+expect frozen 1
+expect speed_k 49
+expect speed_pct 100
 tap REC
 wait 100
 expect frozen 0

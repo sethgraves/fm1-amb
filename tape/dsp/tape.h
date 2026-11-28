@@ -13,7 +13,8 @@
  * The loop (after William Basinski's Disintegration Loops) records the voices, the last LENGTH seconds, all the
  * time. FREEZE holds it: what was just played goes round, wearing a little more every pass where it already wears,
  * and plays back into the echo, the room and the tape with what is played now (BASINSKI: how much of each), so
- * every knob still works on it.
+ * every knob still works on it. Its SPEED slides like a reel slowed by hand (half: an octave down; backwards too);
+ * held, REC records onto it, sound on sound, each layer wearing from the time it goes on.
  *
  * Threads: tp_render() runs in the audio interrupt and reads tp_cfg once a block; the main loop writes tp_cfg and
  * sends notes with tp_note_on/off (a queue). Float only, no libm (fastmath.h), no 64-bit multiplies (felucca-bsp
@@ -39,6 +40,9 @@ typedef struct {
     float basinski;                    /* 0..1: how much of the frozen loop is heard */
     float decay;                       /* 0..1: how fast the frozen loop disintegrates */
     float length;                      /* the loop, seconds (TP_LOOP_MIN .. tp_loop_max()) */
+    float loop_speed;                  /* the frozen loop's speed: 1 as played, 0.5 an octave down, -1 backwards (the
+                                        * reel glides to it); a new FREEZE starts at 1 */
+    uint8_t overdub;                   /* 1, frozen: what is played goes onto the loop (sound on sound) */
     float attack, release;             /* 0..1: the patch's own at 0.5 */
     float a4;                          /* the tuning: A above middle C, Hz (432 by default) */
 } tp_cfg_t;
@@ -68,6 +72,7 @@ extern volatile uint32_t tp_loop_pos;  /* the head, bytes */
 extern volatile uint32_t tp_loop_len;  /* the loop in use, bytes */
 extern volatile uint32_t tp_passes;    /* times round since FREEZE */
 extern volatile uint8_t tp_frozen;     /* the render's FREEZE */
+extern volatile float tp_loop_speed;   /* the frozen loop's speed now (gliding) */
 
 /* for the screen and the tests */
 extern volatile float tp_speed;        /* the tape's speed now, 1 = nominal (wow, flutter, drag) */

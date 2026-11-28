@@ -19,7 +19,10 @@ and AGE over all of it.
 holds it: what you just played goes round and round, and every pass the oxide comes off a little more, always where
 it was already coming off, until only hiss and fragments are left (after William Basinski's *Disintegration
 Loops*). It plays back into the echo, the room and the tape along with what you play now, so every knob still works
-on it; BASINSKI is the balance between the two. FREEZE again lets it go. The gauge under the tape is the loop laid
+on it; BASINSKI is the balance between the two. SPEED slides the frozen loop like a reel slowed by hand, gliding
+there: half speed an octave down and twice as long, a quarter, double, and backwards; each new freeze starts as
+played. Hold REC while it's frozen and what you play goes onto the loop, sound on sound, under the old, each layer
+wearing from the time it goes on. A tap on REC lets it go. The gauge under the tape is the loop laid
 flat: amber where the oxide holds, dark where it has gone.
 
 | Control | What it does |
@@ -28,12 +31,12 @@ flat: amber where the oxide holds, dark where it has gone.
 | PRESET | The patch: M-FLUTE, M-STRINGS, M-CHOIR, PAD, BELL, VIBES |
 | ALGORITHM | The tape: CASSETTE, MICROCASSETTE, VHS, REEL TO REEL |
 | PLAY | HOLD: the chord held down when you press it stays (or, with nothing held, the next chord you play), and the keys play on over it; again: it goes |
-| REC | FREEZE |
+| REC | FREEZE. Frozen: tap to let it go; hold to play onto the loop (sound on sound) |
 | OCT- / OCT+ | The keys down or up an octave (-2 to +2) |
 | SELECT | The page |
 | Page TAPE | AGE, WOW, FLUTTER, DRIVE (WOW and FLUTTER: the tape's own at 50) |
 | Page ECHO | ECHO (level), TIME (50 to 1100 ms), FEEDBACK, SPACE (the room) |
-| Page LOOP | BASINSKI, LENGTH (2 to 12 s), DECAY |
+| Page LOOP | BASINSKI, LENGTH (2 to 12 s), DECAY, SPEED (REV 1X .. REV 1/4, 1/4 .. 1X .. 2X, a semitone a step) |
 | Page SETUP | ATTACK, RELEASE (the patch's own at 50), TAPE END (OFF or 8 S), TUNE (A = 415 to 446 Hz, 432 by default) |
 | HOME (hold 2 s) | The tape's wear back to new |
 | SAVE | Keeps the settings for the next power-on |
