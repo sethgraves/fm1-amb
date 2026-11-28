@@ -9,9 +9,10 @@
  * misalignment as a modulated delay; dull highs, dropouts, hiss and channel wander on the way out. Four tape types,
  * and AGE over all of it.
  *
- * The loop (after William Basinski's Disintegration Loops) records the last LENGTH seconds all the time. FREEZE
- * holds it: what was just played goes round, wearing a little more every pass where it already wears, and
- * BASINSKI is how much of it is heard over what is played now.
+ * The loop (after William Basinski's Disintegration Loops) records the voices, the last LENGTH seconds, all the
+ * time. FREEZE holds it: what was just played goes round, wearing a little more every pass where it already wears,
+ * and plays back into the echo, the room and the tape with what is played now (BASINSKI: how much of each), so
+ * every knob still works on it.
  *
  * Threads: tp_render() runs in the audio interrupt and reads tp_cfg once a block; the main loop writes tp_cfg and
  * sends notes with tp_note_on/off (a queue). Float only, no libm (fastmath.h), no 64-bit multiplies (felucca-bsp
@@ -48,12 +49,14 @@ extern const char *const TP_PATCH_NAME[TP_NPATCH];
 void tp_init(void);
 void tp_render(int32_t *lr, uint32_t n, float gain);   /* n stereo frames, 24-bit; gain 0..1 */
 void tp_panic(void);
-void tp_note_on(int note, int vel);    /* MIDI note, velocity 1..127; from the main loop */
+void tp_note_on(int note, int vel, int held);   /* MIDI note, velocity 1..127; held: HOLD's (never stolen while
+                                                  * there is another voice); from the main loop */
+void tp_note_hold(int note);           /* a note already sounding becomes HOLD's */
 void tp_note_off(int note);
 void tp_all_off(void);
 
 /* the loop: mono, 8-bit mu-law at 14.7 kHz, in the pool; its damage in cells of TP_CELL samples */
-#define TP_LOOP_BYTES 262144u
+#define TP_LOOP_BYTES 176640u          /* 12 s at 14.7 kHz, in whole cells */
 #define TP_LOOP_DIV 3u                 /* 44.1 kHz / 3 */
 #define TP_CELL 256u
 #define TP_NCELL (TP_LOOP_BYTES / TP_CELL)

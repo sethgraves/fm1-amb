@@ -14,10 +14,11 @@ moves), a room, then the deck: saturation and head bump on the way in; wow, flut
 misalignment in the transport; dull highs, dropouts, hiss and channels that wander on the way out. Four tape types
 and AGE over all of it.
 
-**FREEZE and BASINSKI.** The loop records the last LENGTH seconds all the time, unheard. FREEZE holds it: what you
-just played goes round and round, and every pass the oxide comes off a little more, always where it was already
-coming off, until only hiss and fragments are left (after William Basinski's *Disintegration Loops*). BASINSKI is
-how much of it you hear over what you play now. FREEZE again lets it go. The gauge under the tape is the loop laid
+**FREEZE and BASINSKI.** The loop records what you play, the last LENGTH seconds, all the time, unheard. FREEZE
+holds it: what you just played goes round and round, and every pass the oxide comes off a little more, always where
+it was already coming off, until only hiss and fragments are left (after William Basinski's *Disintegration
+Loops*). It plays back into the echo, the room and the tape along with what you play now, so every knob still works
+on it; BASINSKI is the balance between the two. FREEZE again lets it go. The gauge under the tape is the loop laid
 flat: amber where the oxide holds, dark where it has gone.
 
 | Control | What it does |
@@ -25,13 +26,13 @@ flat: amber where the oxide holds, dark where it has gone.
 | Keys | Play (F3 to G5); MIDI notes in from USB and the TRS jack too |
 | PRESET | The patch: M-FLUTE, M-STRINGS, M-CHOIR, PAD, BELL |
 | ALGORITHM | The tape: CASSETTE, MICROCASSETTE, VHS, REEL TO REEL |
-| PLAY | HOLD: notes sound on after the keys let go (a new chord replaces them) |
+| PLAY | HOLD: the chord held down when you press it stays (or, with nothing held, the next chord you play), and the keys play on over it; again: it goes |
 | REC | FREEZE |
 | OCT- / OCT+ | The keys down or up an octave (-2 to +2) |
 | SELECT | The page |
 | Page TAPE | AGE, WOW, FLUTTER, DRIVE (WOW and FLUTTER: the tape's own at 50) |
 | Page ECHO | ECHO (level), TIME (50 to 1100 ms), FEEDBACK, SPACE (the room) |
-| Page LOOP | BASINSKI, LENGTH (2 to 17 s), DECAY |
+| Page LOOP | BASINSKI, LENGTH (2 to 12 s), DECAY |
 | Page SETUP | ATTACK, RELEASE (the patch's own at 50), TAPE END (OFF or 8 S), TUNE (A = 415 to 446 Hz, 432 by default) |
 | HOME (hold 2 s) | The tape's wear back to new |
 | SAVE | Keeps the settings for the next power-on |

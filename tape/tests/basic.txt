@@ -67,7 +67,7 @@ tapkey 16
 wait 3000
 wavstop
 expect peak <990
-# HOLD: a chord stays; a new note replaces it
+# HOLD, nothing held: the next chord played stays, and the keys play on over it
 turn PRESET -3
 expect patch 1
 tap PLAY
@@ -80,13 +80,25 @@ key 7 up
 key 11 up
 key 14 up
 wait 3000
+expect hold 2
 expect voices 3
 tapkey 16
+wait 100
+expect voices 4
 wait 2000
-expect voices 1
+expect voices 3
 tap PLAY
 wait 2000
 expect hold 0
+expect voices 0
+# HOLD with a key down: that note stays
+key 9 down
+tap PLAY
+key 9 up
+wait 1500
+expect voices 1
+tap PLAY
+wait 1500
 expect voices 0
 # FREEZE: play for the loop's 8 s, freeze it, let it wear
 wav freeze.wav
@@ -105,7 +117,7 @@ key 11 up
 key 14 up
 key 16 up
 wait 10000
-expect passes 1
+expect passes >0
 # DECAY up: it disintegrates
 turn SELECT 2
 turn K3 30

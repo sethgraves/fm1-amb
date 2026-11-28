@@ -5,7 +5,8 @@
  *   KEYS        play (F3 .. G5, moved by OCT- / OCT+); MIDI notes in from USB and the TRS jack too
  *   PRESET      the patch: M-FLUTE, M-STRINGS, M-CHOIR (Mellotron-style), PAD, BELL
  *   ALGORITHM   the tape: CASSETTE, MICROCASSETTE, VHS, REEL TO REEL
- *   PLAY        HOLD: notes sound on after the keys let go (a new chord replaces them)
+ *   PLAY        HOLD: the chord held down when it's pressed stays (or, nothing held, the next one played), and
+ *               the keys play on over it; again: it goes
  *   REC         FREEZE: the loop holds what was just played and plays it, wearing; again: let it go
  *   SELECT      the page: TAPE (AGE, WOW, FLUTTER, DRIVE), ECHO (ECHO, TIME, FEEDBACK, SPACE),
  *               LOOP (BASINSKI, LENGTH, DECAY), SETUP (ATTACK, RELEASE, TAPE END, TUNE)
@@ -35,7 +36,7 @@ static const char *const KNOB_NAME[NK] = {"AGE", "WOW", "FLUTTER", "DRIVE", "ECH
                                           "BASINSKI", "LENGTH", "DECAY", "ATTACK", "RELEASE", "TAPE END", "TUNE"};
 /* each knob's range and step a detent: LENGTH seconds; TIME tens of ms; TAPE END off/on; TUNE A less 400 Hz */
 static int32_t k_lo(int k) { return k == K_LENGTH ? 2 : k == K_TIME ? 5 : k == K_TUNE ? 15 : 0; }
-static int32_t k_hi(int k) { return k == K_LENGTH ? 17 : k == K_TIME ? 110 : k == K_TAPEEND ? 1 : k == K_TUNE ? 46 : 100; }
+static int32_t k_hi(int k) { return k == K_LENGTH ? 12 : k == K_TIME ? 110 : k == K_TAPEEND ? 1 : k == K_TUNE ? 46 : 100; }
 static int32_t k_step(int k)
 {
     return k == K_LENGTH || k == K_TAPEEND || k == K_TUNE ? 1 : 2;
@@ -43,7 +44,7 @@ static int32_t k_step(int k)
 
 typedef struct {
     uint32_t magic;
-    uint8_t type, patch, hold;
+    uint8_t type, patch, rsv0;
     int8_t oct;                          /* -2 .. +2 */
     int8_t k[NK];
     uint8_t rsv;
@@ -65,7 +66,7 @@ static void settings_defaults(void)
     set.magic = SET_MAGIC;
     set.type = TP_CASSETTE;
     set.patch = TP_FLUTE;
-    set.hold = 0;
+    set.rsv0 = 0;
     set.oct = 0;
     for (i = 0; i < NK; i++)
         set.k[i] = K_DEF[i];
@@ -74,7 +75,7 @@ static void settings_defaults(void)
 static int settings_ok(void)
 {
     int i;
-    if (set.magic != SET_MAGIC || set.type >= TP_NTYPES || set.patch >= TP_NPATCH || set.hold > 1u || set.oct < -2
+    if (set.magic != SET_MAGIC || set.type >= TP_NTYPES || set.patch >= TP_NPATCH || set.oct < -2
         || set.oct > 2)
         return 0;
     for (i = 0; i < NK; i++)
@@ -154,7 +155,9 @@ static struct {
     uint8_t keynote[NKEYS];              /* the note each key sent (the octave may move while it is held) */
     uint8_t down[128];                   /* notes held now, by a key or MIDI */
     uint8_t sounding[128];               /* notes the engine has on (held, or kept by HOLD) */
+    uint8_t latched[128];                /* HOLD's chord */
     uint8_t ndown;
+    uint8_t hold;                        /* 0 off; 1 armed (the next chord played is held); 2 holding */
 } ui;
 
 static void text_cat(char *d, const char *s)
@@ -223,23 +226,19 @@ static void value_text(int k, char *t, int words)
 }
 
 /* ---------------------------------------------------------------- notes --- */
-/* a note down: HOLD on and nothing held before it, the chord HOLD kept goes and this one starts */
+/* HOLD: pressed with keys down, those notes stay; pressed with none, the next chord played stays (held as it is
+ * played, kept when the last key lets go). Either way the keys then play on over it, as usual. HOLD again: it goes. */
 static void note_down(int m, int vel)
 {
-    int i;
     if (m < 0 || m > 127)
         return;
-    if (set.hold && ui.ndown == 0)
-        for (i = 0; i < 128; i++)
-            if (ui.sounding[i]) {
-                tp_note_off(i);
-                ui.sounding[i] = 0;
-            }
     if (!ui.down[m])
         ui.ndown++;
     ui.down[m] = 1;
     ui.sounding[m] = 1;
-    tp_note_on(m, vel);
+    if (ui.hold == 1)
+        ui.latched[m] = 1;
+    tp_note_on(m, vel, ui.latched[m]);
 }
 
 static void note_up(int m)
@@ -248,23 +247,42 @@ static void note_up(int m)
         return;
     ui.down[m] = 0;
     ui.ndown--;
-    if (!set.hold) {
+    if (!ui.latched[m]) {
         ui.sounding[m] = 0;
         tp_note_off(m);
     }
+    if (ui.hold == 1 && ui.ndown == 0)
+        ui.hold = 2;                     /* the chord is in */
 }
 
-static void hold_set(int on)
+static void hold_press(void)
 {
-    int i;
-    set.hold = (uint8_t)on;
-    set_dirty = 1;
-    if (!on)                             /* HOLD off: what the keys don't hold stops */
-        for (i = 0; i < 128; i++)
-            if (ui.sounding[i] && !ui.down[i]) {
+    int i, any = 0;
+    if (ui.hold) {                       /* let it go: what the keys don't hold stops */
+        for (i = 0; i < 128; i++) {
+            if (ui.latched[i] && !ui.down[i]) {
                 ui.sounding[i] = 0;
                 tp_note_off(i);
             }
+            ui.latched[i] = 0;
+        }
+        ui.hold = 0;
+        app_say("HOLD", "OFF");
+        return;
+    }
+    for (i = 0; i < 128; i++)
+        if (ui.down[i]) {
+            ui.latched[i] = 1;
+            tp_note_hold(i);
+            any = 1;
+        }
+    if (any) {
+        ui.hold = 1;                     /* the keys still down are the chord; more added until they all let go */
+        app_say("HOLD", "ON");
+    } else {
+        ui.hold = 1;
+        app_say("HOLD", "PLAY A CHORD");
+    }
 }
 
 static void keys_and_midi(void)
@@ -291,8 +309,9 @@ static void keys_and_midi(void)
         else if (st == 0xB0u && (d1 == 120u || d1 == 123u)) {   /* all sound off, all notes off */
             int i;
             for (i = 0; i < 128; i++)
-                ui.down[i] = ui.sounding[i] = 0;
+                ui.down[i] = ui.sounding[i] = ui.latched[i] = 0;
             ui.ndown = 0;
+            ui.hold = 0;
             tp_all_off();
         }
     }
@@ -331,8 +350,7 @@ static void input(void)
         if (!(btn & bit) || (ui.btn & bit))
             continue;
         if (k == B_PLAY) {
-            hold_set(!set.hold);
-            app_say("HOLD", set.hold ? "ON" : "OFF");
+            hold_press();
         } else if (k == B_REC) {
             tp_cfg.freeze = (uint8_t)!tp_cfg.freeze;
             app_say(tp_cfg.freeze ? "FROZEN" : "FREEZE", tp_cfg.freeze ? "" : "OFF");
@@ -404,7 +422,7 @@ static void input(void)
             if (m >= 0 && m < 128 && ui.sounding[m])
                 lit |= 1u << i;
         }
-        plat_leds((set.hold ? 1u << B_PLAY : 0u) | (tp_cfg.freeze ? 1u << B_REC : 0u) | (set_dirty ? 1u << B_SAVE : 0u),
+        plat_leds((ui.hold ? 1u << B_PLAY : 0u) | (tp_cfg.freeze ? 1u << B_REC : 0u) | (set_dirty ? 1u << B_SAVE : 0u),
                   lit);
     }
 }
@@ -578,8 +596,8 @@ static void draw(void)
         text_cat(t, n);
         text_cat(t, "  ");
     }
-    if (set.hold)
-        text_cat(t, "HOLD  ");
+    if (ui.hold)
+        text_cat(t, ui.hold == 1 ? "HOLD...  " : "HOLD  ");
     if (tp_frozen) {
         text_cat(t, "FROZEN ");
         int_text((int32_t)tp_passes, n);
@@ -648,7 +666,7 @@ int app_expect(const char *what, int *got)
     else if (!strcmp(what, "patch"))
         *got = set.patch;
     else if (!strcmp(what, "hold"))
-        *got = set.hold;
+        *got = ui.hold;
     else if (!strcmp(what, "oct"))
         *got = set.oct;
     else if (!strcmp(what, "frozen"))

@@ -89,8 +89,12 @@ static void nq_put(uint16_t v)
     nq_w = w + 1u;
 }
 
-/* bits 0..6 the note, 7 on, 8..15 the velocity */
-void tp_note_on(int note, int vel) { nq_put((uint16_t)((note & 127) | 128 | ((vel & 127) << 8))); }
+/* bits 0..6 the note, 7 on, 8..14 the velocity, 15 held (HOLD's); 15 without 7: a sounding note becomes held */
+void tp_note_on(int note, int vel, int held)
+{
+    nq_put((uint16_t)((note & 127) | 128 | ((vel & 127) << 8) | (held ? 0x8000u : 0u)));
+}
+void tp_note_hold(int note) { nq_put((uint16_t)((note & 127) | 0x8000u)); }
 void tp_note_off(int note) { nq_put((uint16_t)(note & 127)); }
 void tp_all_off(void) { nq_put(255u); }
 
@@ -143,7 +147,7 @@ static inline float blep(float t, float dt)    /* polyBLEP: the saw's step, roun
 /* ------------------------------------------------------------------ voices --- */
 #define NVOICE 8
 typedef struct {
-    uint8_t on, gate, note, patch;
+    uint8_t on, gate, note, patch, held;
     float vel, env, t, settle;
     float ph[3], inc[3];
     float lp1, lp2;                    /* strings, pad */
@@ -158,7 +162,7 @@ static voice_t vx[NVOICE];
 static uint32_t vstart;
 static float f_c1, f_c2, f_c3;         /* the formants' coefficients */
 
-static void voice_on(int note, float vel, int patch)
+static void voice_on(int note, float vel, int patch, int held)
 {
     int i, pick = -1;
     uint32_t oldest = 0xFFFFFFFFu;
@@ -173,9 +177,9 @@ static void voice_on(int note, float vel, int patch)
                 pick = i;
                 break;
             }
-    if (pick < 0)                      /* all busy: the oldest released, else the oldest */
+    if (pick < 0)                      /* all busy: the oldest released, else the oldest played; HOLD's last */
         for (i = 0; i < NVOICE; i++) {
-            uint32_t age = vx[i].start + (vx[i].gate ? 0x40000000u : 0u);
+            uint32_t age = vx[i].start + (vx[i].gate ? 0x40000000u : 0u) + (vx[i].held && vx[i].gate ? 0x80000000u : 0u);
             if (age < oldest) {
                 oldest = age;
                 pick = i;
@@ -188,6 +192,7 @@ static void voice_on(int note, float vel, int patch)
         v->gate = 1;
         v->note = (uint8_t)note;
         v->patch = (uint8_t)patch;
+        v->held = (uint8_t)held;
         v->vel = vel;
         v->t = 0.0f;
         v->settle = PATCHES[patch].settle * (0.7f + 0.6f * rndf());
@@ -215,8 +220,18 @@ static void voice_off(int note)
 {
     int i;
     for (i = 0; i < NVOICE; i++)
-        if (vx[i].on && vx[i].note == note)
+        if (vx[i].on && vx[i].note == note) {
             vx[i].gate = 0;
+            vx[i].held = 0;
+        }
+}
+
+static void voice_hold(int note)
+{
+    int i;
+    for (i = 0; i < NVOICE; i++)
+        if (vx[i].on && vx[i].gate && vx[i].note == note)
+            vx[i].held = 1;
 }
 
 /* once a block: a voice's pitch (the note, its tape's settle and wobble, the vibrato) into its oscillators' steps,
@@ -281,7 +296,7 @@ static inline float voice_tick(voice_t *v, float ka, float kr, float a_lp)
         v->n1 += (n - v->n1) * 0.35f;
         v->n2 += (v->n1 - v->n2) * 0.08f;
         v->chiff *= 0.99985f;
-        s = s * 0.7f + (v->n1 - v->n2) * (0.8f + 2.5f * v->chiff);
+        s = s * 0.7f + (v->n1 - v->n2) * (0.25f + 1.4f * v->chiff);   /* breath: a little, more at the start */
         break;
     }
     case TP_STRINGS:
@@ -296,7 +311,7 @@ static inline float voice_tick(voice_t *v, float ka, float kr, float a_lp)
         s = v->lp2 * 0.4f;
         break;
     case TP_CHOIR: {
-        float x = 0.0f, br = rnds() * 0.25f;
+        float x = 0.0f, br = rnds() * 0.08f;
         for (o = 0; o < 2; o++) {
             v->ph[o] += v->inc[o];
             if (v->ph[o] >= 1.0f)
@@ -677,10 +692,15 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
         uint16_t e = nq[nq_r & (NQ - 1u)];
         nq_r++;
         if (e == 255u) {
-            for (k = 0; k < NVOICE; k++)
+            for (k = 0; k < NVOICE; k++) {
                 vx[k].gate = 0;
+                vx[k].held = 0;
+            }
         } else if (e & 128u) {
-            voice_on(e & 127, (float)((e >> 8) & 127) * (1.0f / 127.0f), c.patch < TP_NPATCH ? c.patch : 0);
+            voice_on(e & 127, (float)((e >> 8) & 127) * (1.0f / 127.0f), c.patch < TP_NPATCH ? c.patch : 0,
+                     (e & 0x8000u) != 0u);
+        } else if (e & 0x8000u) {
+            voice_hold(e & 127);
         } else {
             voice_off(e & 127);
         }
@@ -761,6 +781,16 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
                     * PATCHES[v->patch].level * (0.55f + 0.45f * v->vel);
                 l += x * (0.5f - 0.5f * v->pan);
                 r += x * (0.5f + 0.5f * v->pan);
+            }
+            /* the loop: it records the voices, the last LENGTH seconds; frozen, it plays them back into the echo,
+             * the room and the tape with what is played now, BASINSKI the balance */
+            {
+                float ll, lrr, b;
+                loop_tick(0.5f * (l + r), c.decay, &ll, &lrr);
+                fz += ((tp_frozen ? 1.0f : 0.0f) - fz) * 0.0005f;   /* ~50 ms */
+                b = c.basinski * fz;
+                l = l * (1.0f - b) + ll * b * 1.6f;   /* the loop a shade up: the mu-law and the wear take some */
+                r = r * (1.0f - b) + lrr * b * 1.6f;
             }
             /* the echo */
             if (c.echo > 0.005f || c.echo_fb > 0.0f) {
@@ -851,16 +881,6 @@ void tp_render(int32_t *lr, uint32_t n, float gain)
             f1 = 0.5f * (rl - rr) * dk.width;
             l = f0 + f1;
             r = f0 - f1;
-
-            /* the loop: always recording; frozen, it plays and wears, and BASINSKI brings it in */
-            {
-                float ll, lrr, b;
-                loop_tick(0.5f * (l + r), c.decay, &ll, &lrr);
-                fz += ((tp_frozen ? 1.0f : 0.0f) - fz) * 0.0005f;   /* ~50 ms */
-                b = c.basinski * fz;
-                l = l * (1.0f - b) + ll * b;
-                r = r * (1.0f - b) + lrr * b;
-            }
 
             gain_now += (gain - gain_now) * 0.004f;
             l *= gain_now;
